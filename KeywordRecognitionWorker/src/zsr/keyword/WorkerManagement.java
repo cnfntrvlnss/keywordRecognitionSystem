@@ -123,14 +123,7 @@ public class WorkerManagement implements Runnable{
 	 *
 	 */
 	class StoredWorkerInfo{
-		/*
-		public StoredWorkerInfo(WorkerInfo one) {
-			this.one = one;
-			lastActiveTime = new Date();
-			reallocTime = REALLOCNUM;
-			needSynchroTasks = null;//
-		}
-		*/
+
 		public StoredWorkerInfo (WorkerInfo one, TransferedFileSpace li){
 			this.one = one;
 			lastActiveTime = new Date();
@@ -148,6 +141,7 @@ public class WorkerManagement implements Runnable{
 	private Map<Integer, StoredWorkerInfo> currentWorkerSpace = new HashMap<Integer, StoredWorkerInfo>();
 //	Map<String, List<TransferedFile> > synchroTasks; 
 }
+
 //worker 的服务地址等相关信息。
 class WorkerInfo implements Serializable {
 	@Override
