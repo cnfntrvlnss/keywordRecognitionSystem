@@ -179,12 +179,12 @@ class TransferedFileSpace implements Serializable {
 	synchronized public TransferedFileSpace splitAll() {
 		TransferedFileSpace ret = new TransferedFileSpace();
 		if (!downFiles.isEmpty()){
-			Map<String,Byte[]> tmp = downFiles;
+			Map<String,byte[]> tmp = downFiles;
 			downFiles = ret.downFiles;
 			ret.downFiles = tmp;
 		}
 		if (!upFiles.isEmpty()) {
-			Map<String, Byte[]> tmp = upFiles;
+			Map<String, byte[]> tmp = upFiles;
 			upFiles = ret.upFiles;
 			ret.upFiles = tmp;
 		}
@@ -194,8 +194,8 @@ class TransferedFileSpace implements Serializable {
 	 * 
 	 */
 	private static final long serialVersionUID = 1L;
-	Map<String, Byte[]> downFiles = new HashMap<String, Byte[]>();
-	Map<String, Byte[]> upFiles = new HashMap<String, Byte[]>();
+	Map<String, byte[]> downFiles = new HashMap<String, byte[]>();
+	Map<String, byte[]> upFiles = new HashMap<String, byte[]>();
 }
 
 
