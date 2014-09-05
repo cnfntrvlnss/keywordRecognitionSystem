@@ -105,6 +105,10 @@ public class WorkerManagement implements Runnable{
 	 
 	/**
 	 * worker管理端口（8828端口）的处理逻辑。
+	 * protocal 1-1:
+	 * 1. c->s: workerInfo
+	 * 2. s->c: TransferedFileSpace
+	 * 3. c->s: if TranferedFileSpace::upFiles has values, then TransferedFileSpace.
 	 * @author thinkit
 	 *
 	 */

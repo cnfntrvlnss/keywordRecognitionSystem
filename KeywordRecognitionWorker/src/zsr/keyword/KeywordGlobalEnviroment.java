@@ -1,11 +1,18 @@
 package zsr.keyword;
 
 import java.util.Map;
+import java.util.Set;
 
+/**
+ * set predefined variable for search task being deployed later.
+ * be sure the implement support synchronization
+ * 
+ * @author thinkit
+ *
+ */
 public interface KeywordGlobalEnviroment {
-	void SetGlobalEnvi(Map<String, String> map);
-	Map<String, String> getGlobalEnviAll(boolean hasValue);
-	Map<String, String> getGlobalEnviOne(String key, boolean hasValue);
-	Map<String, String> getGlobalEnviOne(String key);
-	
+	void addGlobalEnvi(Map<String, String> map);
+	void removeGlobalEnvi(Set<String> set);
+	Set<String> getGlobalVariable();
+	Map<String, String> getGlobalEnvi(Set<String> s); 
 }
