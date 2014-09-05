@@ -1,5 +1,8 @@
 package zsr.keyword;
 
+import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.net.Socket;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -61,7 +64,7 @@ public class CenterKeywordServiceImpl implements CenterKeywordService{
 		// TODO Auto-generated method stub
 		return resQueue;
 	}
-
+//TODO: how do we synchronize the change of global variables
 	Map<String, String> globalEnvis = Collections.synchronizedMap(new HashMap<String, String>());
 	BlockingQueue<KeywordRequestPacket> reqQueue = new LinkedBlockingQueue<KeywordRequestPacket>(200000);
 	BlockingQueue<KeywordResultPacket> resQueue = new LinkedBlockingQueue<KeywordResultPacket>(200000);
@@ -74,14 +77,21 @@ public class CenterKeywordServiceImpl implements CenterKeywordService{
  *
  */
 class DispatchTaskChannel implements Runnable {
-
+	Socket socket;
+	Map<String, String> changed
 	public DispatchTaskChannel(Socket s) {
-		
+		this.socket = s;
 	}
 	@Override
 	public void run() {
 		// TODO Auto-generated method stub
-		
+		try{
+			ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
+			
+		}
+		catch(IOException e) {
+			e.printStackTrace();
+		}
 	}
 	
 }
