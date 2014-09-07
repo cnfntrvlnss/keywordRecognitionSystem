@@ -5,14 +5,15 @@
  package zsr.keyword;
 
 import java.util.List;
+import java.util.concurrent.BlockingQueue;
 /**
  * center的实现内容是根据管理端口提供的服务的地址，连接服务，分发任务。
  * @author thinkit
  *
  */
 public interface CenterKeywordService extends KeywordGlobalEnviroment{
-	int handReuqests(List<KeywordRequestPacket> requests);
-	List<KeywordResultPacket> retieveResults();
+	BlockingQueue<KeywordRequestPacket> getRequestQueue();
+	BlockingQueue<KeywordResultPacket> getResultQueue();
 }
 /**
  * 功能机提供的接口，比中心机提供的接口复杂得多，会有文件的传递。
@@ -21,6 +22,6 @@ public interface CenterKeywordService extends KeywordGlobalEnviroment{
  *
  */
 interface WorkerKeywordService extends KeywordGlobalEnviroment{
-	int handRequest(List<WorkerKeywordRequestPacket> requests);
-	List<WorkerKeywordResultPacket> retieveResults();
+	BlockingQueue<WorkerKeywordRequestPacket> getRequestQueue();
+	BlockingQueue<WorkerKeywordResultPacket> getResultQueue();
 }

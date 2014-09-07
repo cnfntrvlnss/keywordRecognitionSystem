@@ -1,7 +1,6 @@
 package zsr.keyword;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
@@ -11,11 +10,25 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
+import java.util.logging.ConsoleHandler;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import static zsr.keyword.FuncUtil.*;
 
 public class WorkerManagement implements Runnable{
 	private WorkerManagement(){
+		myLogger.setLevel(Level.ALL);
+		myLogger.setUseParentHandlers(false);
+		Handler h= new ConsoleHandler();
+		h.setLevel(Level.ALL);
+		myLogger.addHandler(h);
 		
+		manaThread = new Thread(this,"worker management");
+		manaThread.start();
 	}
 	public static WorkerManagement onlyOne = new WorkerManagement();
 	
@@ -25,15 +38,36 @@ public class WorkerManagement implements Runnable{
 		/*
 		 * 监听端口的连接，对于建立的每个连接，用单独的线程交互。
 		 */
+		
 		try{
-			while(true) {
-				ServerSocket server = new ServerSocket(8828);
-				Socket s = server.accept();
-				new Thread(new ClientLogicProcess(s)).start();				
+			ClientThreadCab cab = new ClientThreadCab();
+			ServerSocket server = new ServerSocket(8828);
+			while(! Thread.interrupted()) {
+				try{
+					if(cab.hasRoom()){
+						Socket s = server.accept();
+						myLogger.fine("a new socket: local "+s.getLocalSocketAddress()+"; remote "+s.getRemoteSocketAddress());
+						Thread t = new Thread(new ClientLogicProcess(s), "client process");
+						t.start();
+						cab.addThread(t);
+					}
+					else{
+						Thread.sleep(2000);
+						myLogger.info("the client threads alive is counted to max_num, then couldn't accept new one.");
+					}		
+				}
+				catch(IOException e) {
+					e.printStackTrace();
+				}
+				catch(InterruptedException e) {
+					e.printStackTrace();
+					Thread.currentThread().interrupt();
+				}
 			}
+			cab.joinAll();
 		}
 		catch (IOException e) {
-			
+			e.printStackTrace();
 		}
 	}
 /**
@@ -71,10 +105,14 @@ public class WorkerManagement implements Runnable{
 	 
 	/**
 	 * worker管理端口（8828端口）的处理逻辑。
+	 * protocal 1-1:
+	 * 1. c->s: workerInfo
+	 * 2. s->c: TransferedFileSpace
+	 * 3. c->s: if TranferedFileSpace::upFiles has values, then TransferedFileSpace.
 	 * @author thinkit
 	 *
 	 */
-	class ClientLogicProcess implements Runnable {
+	private class ClientLogicProcess implements Runnable {
 		public ClientLogicProcess(Socket socket) {
 			this.socket = socket;
 		}
@@ -88,13 +126,19 @@ public class WorkerManagement implements Runnable{
 				in = new ObjectInputStream(socket.getInputStream());
 				out = new ObjectOutputStream(socket.getOutputStream());
 				WorkerInfo one = (WorkerInfo)in.readObject();
+				myLogger.info("received worker info: "+ one);
 				updateWorkerList(one);
 				TransferedFileSpace send = currentWorkerSpace.get(one.machine).needSynchroTasks.splitAll();
-				//TODO: 访问磁盘，填充文件内容。
+				myLogger.info(send.toString());
+				for(String key : send.downFiles.keySet()) {
+					send.downFiles.put(key, readIdxFile(dataRoot+key));
+				}
 				out.writeObject(send);
 				if (!send.upFiles.isEmpty()){
-					//TODO: 访问磁盘，把文件内容写到磁盘。
 					TransferedFileSpace receive = (TransferedFileSpace) in.readObject();
+					for(String key : receive.upFiles.keySet()) {
+						writeIdxFile(dataRoot+key, receive.upFiles.get(key));
+					}
 				}
 			}
 			catch(IOException e) {
@@ -116,7 +160,39 @@ public class WorkerManagement implements Runnable{
 		
 		Socket socket;
 	}
-	
+	/**
+	 * manage batch of threads executing ClientLogicProcess.
+	 */
+	private class ClientThreadCab {
+		
+		boolean hasRoom(){
+			ListIterator<Thread> it = allThreads.listIterator();
+			while(it.hasNext()) {
+				if(!it.next().isAlive()){
+					it.remove();
+				}
+			}
+			if(allThreads.size() > maxThread){
+				return false;
+			}
+			return true;
+		}
+		void addThread(Thread t){
+			allThreads.add(t);
+		}
+		void joinAll() {
+			for(Thread t : allThreads) {
+				try{
+					t.join();			
+				}
+				catch(InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		List<Thread> allThreads = new LinkedList<Thread>();
+		static final int maxThread = 20;
+	}
 	/**
 	 * 保存worker信息，保存将要通过8828端口与相应的worker交互的信息。
 	 * @author thinkit
@@ -137,13 +213,36 @@ public class WorkerManagement implements Runnable{
 		TransferedFileSpace needSynchroTasks;
 	}
 	
+	Thread manaThread;
+	int centerPort = 8828;
+	String dataRoot = "D:\\keywordCenter\\idxData\\";
 	private final int REALLOCNUM = 5;
 	private Map<Integer, StoredWorkerInfo> currentWorkerSpace = new HashMap<Integer, StoredWorkerInfo>();
 //	Map<String, List<TransferedFile> > synchroTasks; 
+	Logger myLogger = Logger.getLogger("zsr.keyword");
+	
+	//for test...
+	public static void main(String[] args) {
+		try{
+			WorkerManagement.onlyOne.manaThread.join();	
+		}
+		catch(InterruptedException e) {
+			e.printStackTrace();
+		}
+		System.exit(0);
+	}
 }
 
-//worker 的服务地址等相关信息。
+//server related info of worker.。
 class WorkerInfo implements Serializable {
+	public WorkerInfo(){
+		
+	}
+	public WorkerInfo(int iMachine, String strIp, int port){
+		this.machine = iMachine;
+		this.strIp = strIp;
+		this.port = port;
+	}
 	@Override
 	public String toString() {
 		String allFields = "strIp:" + strIp+"; port:"+port+"; machine:"+machine;
@@ -161,7 +260,7 @@ class WorkerInfo implements Serializable {
 }
 
 /**
- * 下发的文件在放到此类中下发。
+ * used for synchronization of distributed files。
  */
 class TransferedFileSpace implements Serializable {
 	public TransferedFileSpace() {
@@ -175,7 +274,23 @@ class TransferedFileSpace implements Serializable {
 			upFiles.put(file, null);
 		}
 	}
-	
+	@Override
+	synchronized public String toString(){
+		String add = "downFiles:";
+		int cnt = 0;
+		for (String ky : downFiles.keySet()) {
+			if(cnt !=0) add += ",";
+			add += ky;
+		}
+		add += ";upFiles:";
+		cnt = 0;
+		for(String ky : upFiles.keySet()) {
+			if(cnt != 0) add += ",";
+			add +=ky;
+		}
+		add += ";";
+		return super.toString()+" "+add;
+	}
 	synchronized public TransferedFileSpace splitAll() {
 		TransferedFileSpace ret = new TransferedFileSpace();
 		if (!downFiles.isEmpty()){
@@ -196,6 +311,10 @@ class TransferedFileSpace implements Serializable {
 	private static final long serialVersionUID = 1L;
 	Map<String, byte[]> downFiles = new HashMap<String, byte[]>();
 	Map<String, byte[]> upFiles = new HashMap<String, byte[]>();
+	
+	public static void main(String[] args) {
+		
+	}
 }
 
 

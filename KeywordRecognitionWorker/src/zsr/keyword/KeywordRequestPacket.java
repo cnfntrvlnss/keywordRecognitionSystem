@@ -14,9 +14,13 @@ public class KeywordRequestPacket {
 	public enum RequestType{
 		OfflineSearch, OnlineSearch
 	}
-	public String reqID;
-	RequestType reqType;
-	public String reqCondition;
+	public String id;
+	RequestType type;
+	/**
+	 * when storing global variable name, format $xxx.
+	 */
+	public String keywords;
+	public String audioFile;	
 }
 class WorkerKeywordRequestPacket extends KeywordRequestPacket {
 	

@@ -1,17 +1,17 @@
 package zsr.keyword;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.OutputStream;
 import java.net.Socket;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.logging.ConsoleHandler;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import static zsr.keyword.FuncUtil.*;
 
 /**
  * 连接management端口，发送本机识别服务的端口号，并处理与center的文件同步。
@@ -20,78 +20,36 @@ import java.util.Map;
  */
 public class WorkerParticipation implements Runnable{
 	private WorkerParticipation(){
+		myLogger.setLevel(Level.ALL);
+		myLogger.setUseParentHandlers(false);
+		Handler h= new ConsoleHandler();
+		h.setLevel(Level.ALL);
+		myLogger.addHandler(h);
 		
+		
+		clientThread = new Thread(this, "worker participation");
+		clientThread.start();
 	}
 	public static WorkerParticipation onlyOne = new WorkerParticipation();
-	/**
-	 * 要确保写文件时，其他的程序不能读写。
-	 * @param file
-	 */
-	void writeIdxFile(String file, byte[] data) {
-		File f = new File(file);
-		if(f.exists()) {
-			//log: warning, while the exact file exists, receive a creat-file
-			//command.
-			return;
-		}
-		File tF = new File(file + ".tmp");
-		try{
-			OutputStream out = new FileOutputStream(tF);
-			out.write(data);
-			out.close();
-			tF.renameTo(f);
-		}
-		catch(FileNotFoundException e) {
-			e.printStackTrace();
-		}
-		catch(IOException e) {
-			e.printStackTrace();
-		}
-		finally{
-			if(tF.exists()){
-				tF.delete();
-			}
-		}
-	}
-	byte[] readIdxFile(String file) {
-		File f = new File(file);
-		if(!f.exists()) {
-			//log: warning, while the exact file doesn't exist, receive
-			//a read command.
-			return null;
-		}
-		byte[] res = null;
-		try{
-			InputStream in = new FileInputStream(f);
-			byte[] tmpArr = new byte[1000];
-			int readNum = in.read(tmpArr);
-			while(readNum == 1000){
-				if(res == null){
-					res = tmpArr;
-				}
-				else {
-					FuncUtil.concat(res, tmpArr);
-				}
-			}
-			in.close();
-		}
-		catch (FileNotFoundException e) {
-			e.printStackTrace();
-		}
-		catch(IOException e) {
-			e.printStackTrace();
-		}
-	}
 	@Override
 	public void run() {
 		// TODO Auto-generated method stub
 		while(true){
+			Socket s = null;
 			try{
-				Socket s = new Socket("localhost", 8828);
-				ObjectInputStream in = new ObjectInputStream(s.getInputStream());
+				Thread.sleep(5000);
+				//TODO: make sure that recogServer is valid. or skip following .
+				if(recogServer == null){
+					continue;
+				}
+				s = new Socket(centerIp, centerPort);
+				myLogger.fine("new socket: "+"local "+s.getLocalSocketAddress()+"remote "+s.getRemoteSocketAddress());
 				ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream());
 				out.writeObject(recogServer);
+				myLogger.info("have notified keyword server, "+recogServer);
+				ObjectInputStream in = new ObjectInputStream(s.getInputStream());
 				TransferedFileSpace ret = (TransferedFileSpace)in.readObject();
+				myLogger.info("have received feedback, " + ret.toString());
 				if (ret.downFiles.size()>0){
 					Map<String, byte[]> allFiles = ret.downFiles;
 					ret.downFiles = new HashMap<String, byte[]>();
@@ -106,16 +64,24 @@ public class WorkerParticipation implements Runnable{
 						ret.upFiles.put(key, readIdxFile(dataRoot+key));
 					}
 					out.writeObject(ret);
-				}
-				
-				
-				
+				}				
 			}
 			catch (IOException e) {
 				e.printStackTrace();
 			}
 			catch (ClassNotFoundException e) {
 				e.printStackTrace();
+			}
+			catch(InterruptedException e){
+				e.printStackTrace();
+			}
+			finally{
+				try{
+					if(s != null) s.close();		
+				}
+				catch(IOException e){
+					e.printStackTrace();
+				}
 			}
 		}
 	}
@@ -128,6 +94,21 @@ public class WorkerParticipation implements Runnable{
 		return recogServer;
 	}
 	
+	Thread clientThread;
+	String centerIp = "localhost";
+	int centerPort = 8828;
 	WorkerInfo recogServer;
 	String dataRoot = "D:\\keywordRecognition\\idxData\\";
+	Logger myLogger = Logger.getLogger("zsr.keyword");
+
+	
+	public static void main(String[] args) {
+		WorkerParticipation.onlyOne.setRecogServer(new WorkerInfo(1, "localhost", 7878));
+		try{
+			WorkerParticipation.onlyOne.clientThread.join();	
+		}
+		catch(InterruptedException e){
+			e.printStackTrace();
+		}
+	}
 }
