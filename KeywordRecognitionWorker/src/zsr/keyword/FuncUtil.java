@@ -51,7 +51,7 @@ public class FuncUtil {
 	}
 	
 	/**
-	 * 要确保写文件时，其他的程序不能读写。
+	 * 要确保写文件时，是操作系统级互斥的。
 	 * @param file
 	 */
 	public static void writeIdxFile(String file, byte[] data) {
@@ -61,7 +61,7 @@ public class FuncUtil {
 			//command.
 			return;
 		}
-		File tF = new File(file + ".tmp");
+		File tF = new File(file +"."+ Thread.currentThread().getId() +".tmp");
 		try{
 			OutputStream out = new FileOutputStream(tF);
 			out.write(data);

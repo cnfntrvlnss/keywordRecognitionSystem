@@ -6,6 +6,7 @@ import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -70,8 +71,9 @@ public class WorkerManagement implements Runnable{
 			e.printStackTrace();
 		}
 	}
+	
 /**
- * 更新保存的机器号列表，若之前没有机器号，就添加新的信息，并复用同一个待同步文件列表；
+ * 更新相应机器信息. 若之前没有机器号，就添加新的信息，并复用同一个待同步文件列表；
  * 若已存在相应的文件列表，就修改相应的信息，若ip变了就把待同步文件列表设为相同Ip的。
  * @param worker
  */
@@ -79,7 +81,8 @@ public class WorkerManagement implements Runnable{
 		TransferedFileSpace tmpLi = null;
 		Boolean isFound = false;
 		boolean ipIsChanged = false;
-		for (Integer mach : currentWorkerSpace.keySet()) {
+		synchronized (currentWorkerSpace) {
+			for (Integer mach : currentWorkerSpace.keySet()) {
 			if(mach.intValue() == worker.machine.intValue()) {
 				if (!currentWorkerSpace.get(mach).one.strIp.equals(worker.strIp)){
 					ipIsChanged = true;
@@ -91,14 +94,15 @@ public class WorkerManagement implements Runnable{
 			if (currentWorkerSpace.get(mach).one.strIp.equals(worker.strIp)) {
 				tmpLi = currentWorkerSpace.get(mach).needSynchroTasks;
 			}
-		}
-		if (isFound == false) {
+			}
 			if (tmpLi == null) tmpLi = new TransferedFileSpace();
-			currentWorkerSpace.put(worker.machine, new StoredWorkerInfo(worker, tmpLi));
-		}
-		else if (ipIsChanged){
-			if (tmpLi == null) tmpLi = new TransferedFileSpace();
-			currentWorkerSpace.get(worker.machine).needSynchroTasks = tmpLi;
+			if (isFound == false) {
+				currentWorkerSpace.put(worker.machine, new StoredWorkerInfo(worker, tmpLi));
+			}
+			else if (ipIsChanged) {
+				//ip换了，与ip相关的同步任务空间要变更。
+				currentWorkerSpace.get(worker.machine).needSynchroTasks = tmpLi;
+			}	
 		}
 	}
 	
@@ -198,8 +202,12 @@ public class WorkerManagement implements Runnable{
 	 * @author thinkit
 	 *
 	 */
-	class StoredWorkerInfo{
-
+	private class StoredWorkerInfo{
+		/**
+		 * 
+		 * @param one
+		 * @param li not allowed to be null.
+		 */
 		public StoredWorkerInfo (WorkerInfo one, TransferedFileSpace li){
 			this.one = one;
 			lastActiveTime = new Date();
@@ -210,6 +218,9 @@ public class WorkerManagement implements Runnable{
 		WorkerInfo one;
 		Date lastActiveTime;
 		int reallocTime;
+		/**
+		 * 同一个workerInfo.strIp下共用相同的TransferedFileSpace.
+		 */
 		TransferedFileSpace needSynchroTasks;
 	}
 	
@@ -217,7 +228,11 @@ public class WorkerManagement implements Runnable{
 	int centerPort = 8828;
 	String dataRoot = "D:\\keywordCenter\\idxData\\";
 	private final int REALLOCNUM = 5;
-	private Map<Integer, StoredWorkerInfo> currentWorkerSpace = new HashMap<Integer, StoredWorkerInfo>();
+	/**
+	 * 一旦创建了一个键值对，就不能再删除。所有对currentWorkerSpace的访问都要加锁。
+	 */
+	private Map<Integer, StoredWorkerInfo> currentWorkerSpace = 
+			Collections.synchronizedMap(new HashMap<Integer, StoredWorkerInfo>());
 //	Map<String, List<TransferedFile> > synchroTasks; 
 	Logger myLogger = Logger.getLogger("zsr.keyword");
 	

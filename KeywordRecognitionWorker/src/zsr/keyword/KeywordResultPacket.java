@@ -1,10 +1,32 @@
 package zsr.keyword;
 
 public class KeywordResultPacket {
+	public KeywordResultPacket(){}
+	public KeywordResultPacket(KeywordResultPacket p) {
+		this.reqID = p.reqID;
+		this.res = p.res;
+		this.comment = p.comment;
+	}
+	@Override
+	public String toString() {
+		String addStr = "reqID:"+reqID+";res:"+res+";comment:"+comment;
+		return super.toString()+" "+addStr;
+	}
 	public String reqID;
-	public String res;
+	public static enum Result{
+		success, fileIOError, recognitionError
+	}
+	Result res;
+	public String comment;
 }
+
 class WorkerKeywordResultPacket extends KeywordResultPacket{
-	public String outFile;
-//	public String workerID;
+	
+	@Override
+	public String toString(){
+		return super.toString();
+	}
+	public byte[] idxData;
+	public String workerID;
+	public String idxFilePath;
 }
