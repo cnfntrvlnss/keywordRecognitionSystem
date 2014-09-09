@@ -13,6 +13,9 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Handler;
 import java.util.logging.Level;
@@ -32,6 +35,26 @@ public class WorkerManagement implements Runnable{
 		manaThread.start();
 	}
 	public static WorkerManagement onlyOne = new WorkerManagement();
+	
+	public Set<Integer> getMachineSet(){
+		return null;
+	}
+	
+	public WorkerInfo allocateOne(int imach, BlockingQueue<String> [] refBQue) {
+		return null;
+	}
+
+	/**
+	 * 此函数的语义是之前得到的workerInfo，我不再需要它了。
+	 * 只有在不是由于网络通信失败的情况下，才能调用。也可以不调用。总之，不很重要的函数。
+	 * 切记，在网络通信失败的情况下调用，是严厉禁止的。
+	 * @param imach
+	 * @param worker
+	 * @return
+	 */
+	public boolean releaseOne(int imach, WorkerInfo worker) {
+		return false;
+	}
 	
 	@Override
 	public void run() {
@@ -54,7 +77,7 @@ public class WorkerManagement implements Runnable{
 					}
 					else{
 						Thread.sleep(2000);
-						myLogger.info("the client threads alive is counted to max_num, then couldn't accept new one.");
+						myLogger.warning("the client threads alive is counted to max_num, then couldn't accept new one.");
 					}		
 				}
 				catch(IOException e) {
@@ -165,7 +188,8 @@ public class WorkerManagement implements Runnable{
 		Socket socket;
 	}
 	/**
-	 * manage batch of threads executing ClientLogicProcess.
+	 * manage batch of threads of ClientLogicProcess. 
+	 * eg. maintain max num of threads alive.
 	 */
 	private class ClientThreadCab {
 		
@@ -221,7 +245,12 @@ public class WorkerManagement implements Runnable{
 		/**
 		 * 同一个workerInfo.strIp下共用相同的TransferedFileSpace.
 		 */
-		TransferedFileSpace needSynchroTasks;
+	//	TransferedFileSpace needSynchroTasks;
+	}
+	
+	private class AddressRelatedSpace{		
+		BlockingQueue<String> allocatedQueue = new LinkedBlockingQueue<String>();
+		TransferedFileSpace neededSuchTasks = new TransferedFileSpace();
 	}
 	
 	Thread manaThread;
@@ -229,10 +258,16 @@ public class WorkerManagement implements Runnable{
 	String dataRoot = "D:\\keywordCenter\\idxData\\";
 	private final int REALLOCNUM = 5;
 	/**
-	 * 一旦创建了一个键值对，就不能再删除。所有对currentWorkerSpace的访问都要加锁。
+	 * 对两个Map对象的操作基本上是同步的：
+	 * 当在currentWorkerSpace中添加一项时，且出现了新的地址，就在idxFileSpace中添加新的地址。
+	 * 当在currentWorkerSpace中删除某项时，且相应的地址也失效了，就在idxFileSpace中删除相应的项目。
+	 * 当在currentWorkerSpace中更新某项的workerInfo信息时，---暂时不允许这样的情况存在，可以通过内部的交互分解成
+	 * 先删除再添加。
 	 */
 	private Map<Integer, StoredWorkerInfo> currentWorkerSpace = 
 			Collections.synchronizedMap(new HashMap<Integer, StoredWorkerInfo>());
+	private Map<String, AddressRelatedSpace> idxFileSpace = 
+			Collections.synchronizedMap(new HashMap<String, AddressRelatedSpace>());
 //	Map<String, List<TransferedFile> > synchroTasks; 
 	Logger myLogger = Logger.getLogger("zsr.keyword");
 	
