@@ -23,6 +23,11 @@ import java.util.logging.Logger;
 
 import static zsr.keyword.FuncUtil.*;
 
+/**
+ * 实现的功能：在随意变更worker的socket服务地址时，center会正常运行。
+ * @author Administrator
+ *
+ */
 public class WorkerManagement implements Runnable{
 	private WorkerManagement(){
 		myLogger.setLevel(Level.ALL);
@@ -95,40 +100,34 @@ public class WorkerManagement implements Runnable{
 		}
 	}
 	
-/**
- * 更新相应机器信息. 若之前没有机器号，就添加新的信息，并复用同一个待同步文件列表；
- * 若已存在相应的文件列表，就修改相应的信息，若ip变了就把待同步文件列表设为相同Ip的。
- * @param worker
- */
-	private void updateWorkerList(WorkerInfo worker) {
-		TransferedFileSpace tmpLi = null;
-		Boolean isFound = false;
-		boolean ipIsChanged = false;
-		synchronized (currentWorkerSpace) {
-			for (Integer mach : currentWorkerSpace.keySet()) {
-			if(mach.intValue() == worker.machine.intValue()) {
-				if (!currentWorkerSpace.get(mach).one.strIp.equals(worker.strIp)){
-					ipIsChanged = true;
-				}
-				currentWorkerSpace.get(mach).lastActiveTime = new Date();
-				currentWorkerSpace.get(mach).reallocTime = REALLOCNUM;
-				isFound = true;
+	/**
+	 * 若参数中的机器信息不在列表中，就增加一项；
+	 * 若参数中的机器信息已在列表中存在，且内容相等，就更新一下实时信息；
+	 * 若参数中的机器信息已在列表中存在，但内容不相等，就操作失败。
+	 * @param worker
+	 */
+	private boolean addWorkerList(WorkerInfo worker) {
+		int iMach = worker.machine;
+		if(currentWorkerSpace.containsKey(iMach) && currentWorkerSpace.get(iMach)
+				!= null ) {
+			if(currentWorkerSpace.get(iMach).one.equals(worker)) {
+				return true;
 			}
-			if (currentWorkerSpace.get(mach).one.strIp.equals(worker.strIp)) {
-				tmpLi = currentWorkerSpace.get(mach).needSynchroTasks;
+			else {
+				myLogger.warning("ignore the coming workerInfo, for not being consistent with the workerInfo being used currently.");
+				return false;
 			}
+		}
+		boolean hasAddr = false;
+		for(Integer mach : currentWorkerSpace.keySet()) {
+			if(worker.strIp.equals(currentWorkerSpace.get(mach).one.strIp)) {
+				hasAddr = true;
 			}
-			if (tmpLi == null) tmpLi = new TransferedFileSpace();
-			if (isFound == false) {
-				currentWorkerSpace.put(worker.machine, new StoredWorkerInfo(worker, tmpLi));
-			}
-			else if (ipIsChanged) {
-				//ip换了，与ip相关的同步任务空间要变更。
-				currentWorkerSpace.get(worker.machine).needSynchroTasks = tmpLi;
-			}	
+		}
+		if (hasAddr == false) {
+			
 		}
 	}
-	
 	 
 	/**
 	 * worker管理端口（8828端口）的处理逻辑。
@@ -297,6 +296,11 @@ class WorkerInfo implements Serializable {
 	public String toString() {
 		String allFields = "strIp:" + strIp+"; port:"+port+"; machine:"+machine;
 		return super.toString()+"  "+allFields;
+	}
+	@Override
+	public boolean equals(Object oth) {
+		
+		return false;
 	}
 	/**
 	 * 
