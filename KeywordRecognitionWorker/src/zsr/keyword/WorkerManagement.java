@@ -44,15 +44,26 @@ public class WorkerManagement implements Runnable{
 	public Set<Integer> getMachineSet(){
 		return null;
 	}
-	
+	/**
+	 * 当多次连续分配，即，对于同一个machine, 在两次AddOnWorkerList的调用中，除去release的个数，allocate
+	 * 的次数超过REALLOCNUM时，就会在workerList中删除这条记录。
+	 * @param imach
+	 * @param refBQue
+	 * @return
+	 */
 	public WorkerInfo allocateOne(int imach, BlockingQueue<String> [] refBQue) {
+		synchronized(currentWorkerSpace) {
+			if(!currentWorkerSpace.containsKey(imach)) {
+				return null;
+			}
+			
+		}
 		return null;
 	}
 
 	/**
 	 * 此函数的语义是之前得到的workerInfo，我不再需要它了。
 	 * 只有在不是由于网络通信失败的情况下，才能调用。也可以不调用。总之，不很重要的函数。
-	 * 切记，在网络通信失败的情况下调用，是严厉禁止的。
 	 * @param imach
 	 * @param worker
 	 * @return
@@ -106,29 +117,56 @@ public class WorkerManagement implements Runnable{
 	 * 若参数中的机器信息已在列表中存在，但内容不相等，就操作失败。
 	 * @param worker
 	 */
-	private boolean addWorkerList(WorkerInfo worker) {
-		int iMach = worker.machine;
-		if(currentWorkerSpace.containsKey(iMach) && currentWorkerSpace.get(iMach)
-				!= null ) {
-			if(currentWorkerSpace.get(iMach).one.equals(worker)) {
-				return true;
+	private boolean addOnWorkerList(WorkerInfo worker) {
+		synchronized(currentWorkerSpace) {
+			int iMach = worker.machine;
+			if(currentWorkerSpace.containsKey(iMach) && currentWorkerSpace.get(iMach)
+					!= null ) {
+				if(currentWorkerSpace.get(iMach).one.equals(worker)) {
+					//update real time Info.
+					currentWorkerSpace.get(iMach).lastActiveTime = new Date();
+					currentWorkerSpace.get(iMach).reallocTime  = REALLOCNUM;
+					return true;
+				}
+				else {
+					myLogger.warning("ignore the coming workerInfo, for not being consistent with the workerInfo being used currently.");
+					return false;
+				}
 			}
-			else {
-				myLogger.warning("ignore the coming workerInfo, for not being consistent with the workerInfo being used currently.");
-				return false;
+			boolean hasAddr = false;
+			for(Integer mach : currentWorkerSpace.keySet()) {
+				if(worker.strIp.equals(currentWorkerSpace.get(mach).one.strIp)) {
+					hasAddr = true;
+				}
+			}		
+	
+			if (hasAddr == false) {
+				idxFileSpace.put(worker.strIp, new AddressRelatedSpace());
 			}
-		}
-		boolean hasAddr = false;
-		for(Integer mach : currentWorkerSpace.keySet()) {
-			if(worker.strIp.equals(currentWorkerSpace.get(mach).one.strIp)) {
-				hasAddr = true;
-			}
-		}
-		if (hasAddr == false) {
 			
+			currentWorkerSpace.put(worker.machine, new StoredWorkerInfo(worker));
+			return false;
+		
 		}
 	}
-	 
+	private boolean removeOnWorkerList(WorkerInfo worker) {
+		synchronized(currentWorkerSpace) {
+			currentWorkerSpace.remove(worker.machine);
+			boolean hasAddr = false;
+			for (Integer i: currentWorkerSpace.keySet()) {
+				if(worker.strIp.equals(currentWorkerSpace.get(i).one.strIp)) {
+					hasAddr = true;
+					break;
+				}
+			}
+			if(hasAddr == false) {
+				idxFileSpace.remove(worker.strIp);
+			}
+		}
+		
+		return false;
+	}
+	
 	/**
 	 * worker管理端口（8828端口）的处理逻辑。
 	 * protocal 1-1:
@@ -231,11 +269,10 @@ public class WorkerManagement implements Runnable{
 		 * @param one
 		 * @param li not allowed to be null.
 		 */
-		public StoredWorkerInfo (WorkerInfo one, TransferedFileSpace li){
+		public StoredWorkerInfo (WorkerInfo one){
 			this.one = one;
 			lastActiveTime = new Date();
 			reallocTime = REALLOCNUM;
-			needSynchroTasks = li;
 		}
 		
 		WorkerInfo one;
@@ -299,7 +336,15 @@ class WorkerInfo implements Serializable {
 	}
 	@Override
 	public boolean equals(Object oth) {
-		
+		if(oth == null) return false;
+		if(getClass() == oth.getClass() ) {
+			if(super.equals(oth) &&
+					strIp.equals(((WorkerInfo) oth).strIp) &&
+					port.equals(((WorkerInfo) oth).port) &&
+					machine.equals(((WorkerInfo) oth).machine)) {
+				return true;
+			}
+		}
 		return false;
 	}
 	/**
