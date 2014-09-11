@@ -6,9 +6,11 @@ import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.ListIterator;
@@ -41,8 +43,14 @@ public class WorkerManagement implements Runnable{
 	}
 	public static WorkerManagement onlyOne = new WorkerManagement();
 	
+	/**
+	 * called before allocateOne.
+	 * @return
+	 */
 	public Set<Integer> getMachineSet(){
-		return null;
+		synchronized (currentWorkerSpace) {
+			return new HashSet<Integer> (currentWorkerSpace.keySet());
+		}
 	}
 	/**
 	 * 当多次连续分配，即，对于同一个machine, 在两次AddOnWorkerList的调用中，除去release的个数，allocate
@@ -52,13 +60,23 @@ public class WorkerManagement implements Runnable{
 	 * @return
 	 */
 	public WorkerInfo allocateOne(int imach, BlockingQueue<String> [] refBQue) {
+		WorkerInfo ret = null;
 		synchronized(currentWorkerSpace) {
-			if(!currentWorkerSpace.containsKey(imach)) {
+			if(!currentWorkerSpace.containsKey(imach) || currentWorkerSpace.get(imach) == null) {
 				return null;
 			}
-			
+			if (currentWorkerSpace.get(imach).reallocTime == 0) {
+				myLogger.info("the workerInfo: "+currentWorkerSpace.get(imach).one+" is out of date, then don't allocate it, and remove it.");
+				removeOnWorkerList(currentWorkerSpace.get(imach).one);
+				return null;
+			}
+			if (refBQue != null) {
+				ret = currentWorkerSpace.get(imach).one;
+				refBQue[0] = idxFileSpace.get(ret.strIp).taskQueue;
+				currentWorkerSpace.get(imach).reallocTime --;
+			}
 		}
-		return null;
+		return ret;
 	}
 
 	/**
@@ -69,7 +87,12 @@ public class WorkerManagement implements Runnable{
 	 * @return
 	 */
 	public boolean releaseOne(int imach, WorkerInfo worker) {
-		return false;
+		synchronized(currentWorkerSpace) {
+			if(currentWorkerSpace.get(imach).reallocTime != REALLOCNUM) {
+				currentWorkerSpace.get(imach).reallocTime ++;
+			}
+		}
+		return true;
 	}
 	
 	@Override
@@ -78,7 +101,6 @@ public class WorkerManagement implements Runnable{
 		/*
 		 * 监听端口的连接，对于建立的每个连接，用单独的线程交互。
 		 */
-		
 		try{
 			ClientThreadCab cab = new ClientThreadCab();
 			ServerSocket server = new ServerSocket(8828);
@@ -116,8 +138,10 @@ public class WorkerManagement implements Runnable{
 	 * 若参数中的机器信息已在列表中存在，且内容相等，就更新一下实时信息；
 	 * 若参数中的机器信息已在列表中存在，但内容不相等，就操作失败。
 	 * @param worker
+	 * @param synchSpace 返回从跟机器信息相应的同步文件结构中截掉的同步文件信息。
+	 * 
 	 */
-	private boolean addOnWorkerList(WorkerInfo worker) {
+	private boolean addOnWorkerList(WorkerInfo worker, TransferedFileSpace[] refSynchSpace) {
 		synchronized(currentWorkerSpace) {
 			int iMach = worker.machine;
 			if(currentWorkerSpace.containsKey(iMach) && currentWorkerSpace.get(iMach)
@@ -126,6 +150,9 @@ public class WorkerManagement implements Runnable{
 					//update real time Info.
 					currentWorkerSpace.get(iMach).lastActiveTime = new Date();
 					currentWorkerSpace.get(iMach).reallocTime  = REALLOCNUM;
+					if (refSynchSpace != null) {
+						refSynchSpace[0] = idxFileSpace.get(worker.strIp).synchSpace.splitAll();
+					}
 					return true;
 				}
 				else {
@@ -149,6 +176,12 @@ public class WorkerManagement implements Runnable{
 		
 		}
 	}
+	
+	/**
+	 * the only way to remove worker info from the stored list.
+	 * @param worker
+	 * @return
+	 */
 	private boolean removeOnWorkerList(WorkerInfo worker) {
 		synchronized(currentWorkerSpace) {
 			currentWorkerSpace.remove(worker.machine);
@@ -191,8 +224,12 @@ public class WorkerManagement implements Runnable{
 				out = new ObjectOutputStream(socket.getOutputStream());
 				WorkerInfo one = (WorkerInfo)in.readObject();
 				myLogger.info("received worker info: "+ one);
-				updateWorkerList(one);
-				TransferedFileSpace send = currentWorkerSpace.get(one.machine).needSynchroTasks.splitAll();
+				TransferedFileSpace[] refSend = new TransferedFileSpace[1];
+				addOnWorkerList(one, refSend);
+				TransferedFileSpace send = refSend[0];
+				if (send == null) {
+					send = new TransferedFileSpace();
+				}
 				myLogger.info(send.toString());
 				for(String key : send.downFiles.keySet()) {
 					send.downFiles.put(key, readIdxFile(dataRoot+key));
@@ -220,8 +257,7 @@ public class WorkerManagement implements Runnable{
 					e.printStackTrace();
 				}
 			}
-		}
-		
+		}		
 		Socket socket;
 	}
 	/**
@@ -276,7 +312,7 @@ public class WorkerManagement implements Runnable{
 		}
 		
 		WorkerInfo one;
-		Date lastActiveTime;
+		Date lastActiveTime; // useless temporarily.
 		int reallocTime;
 		/**
 		 * 同一个workerInfo.strIp下共用相同的TransferedFileSpace.
@@ -285,8 +321,8 @@ public class WorkerManagement implements Runnable{
 	}
 	
 	private class AddressRelatedSpace{		
-		BlockingQueue<String> allocatedQueue = new LinkedBlockingQueue<String>();
-		TransferedFileSpace neededSuchTasks = new TransferedFileSpace();
+		BlockingQueue<String> taskQueue = new LinkedBlockingQueue<String>();
+		TransferedFileSpace synchSpace = new TransferedFileSpace();
 	}
 	
 	Thread manaThread;
