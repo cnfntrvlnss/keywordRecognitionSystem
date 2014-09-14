@@ -26,7 +26,9 @@ import java.util.logging.Logger;
 import static zsr.keyword.FuncUtil.*;
 
 /**
- * 实现的功能：在随意变更worker的socket服务地址时，center会正常运行。
+ * 需求： 在随意变更worker的socket服务地址时，center会正常运行。
+ * 功能：logic of worker management's socket service. eg: centralized management of worker
+ * info, transfer idx file between center and worker. 
  * @author Administrator
  *
  */
@@ -53,7 +55,8 @@ public class WorkerManagement implements Runnable{
 		}
 	}
 	/**
-	 * 当多次连续分配，即，对于同一个machine, 在两次AddOnWorkerList的调用中，除去release的个数，allocate
+	 * 一次分配失败，就说明以前分配的同一机器下的workerInfo失效了。
+	 * 当多次连续分配超限时，即，对于同一个machine, 在两次AddOnWorkerList的调用中，除去release的个数，allocate
 	 * 的次数超过REALLOCNUM时，就会在workerList中删除这条记录。
 	 * @param imach
 	 * @param refBQue
@@ -80,7 +83,7 @@ public class WorkerManagement implements Runnable{
 	}
 
 	/**
-	 * 此函数的语义是之前得到的workerInfo，我不再需要它了。
+	 * 此函数的语义是之前得到的workerInfo不再需要了。
 	 * 只有在不是由于网络通信失败的情况下，才能调用。也可以不调用。总之，不很重要的函数。
 	 * @param imach
 	 * @param worker
@@ -98,9 +101,6 @@ public class WorkerManagement implements Runnable{
 	@Override
 	public void run() {
 		// TODO Auto-generated method stub
-		/*
-		 * 监听端口的连接，对于建立的每个连接，用单独的线程交互。
-		 */
 		try{
 			ClientThreadCab cab = new ClientThreadCab();
 			ServerSocket server = new ServerSocket(8828);

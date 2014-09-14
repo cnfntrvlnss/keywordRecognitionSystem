@@ -7,19 +7,28 @@ import java.net.Socket;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.Logger;
 import static zsr.keyword.FuncUtil.*;
-
-public class CenterKeywordServiceImpl implements CenterKeywordService{
+/**
+ * 实现关键词识别，检索的统一接口，内部实现包括对识别服务客户线程的实现 与管理。
+ * @author Administrator
+ *
+ */
+public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 
 	private CenterKeywordServiceImpl() {
 		
 	}
 	public static CenterKeywordServiceImpl onlyOne = new CenterKeywordServiceImpl();
+	
+	
 	/**
 	 * @param args
 	 */
@@ -81,9 +90,85 @@ public class CenterKeywordServiceImpl implements CenterKeywordService{
 		// TODO Auto-generated method stub
 		return resQueue;
 	}
+	
 	/**
-	 * implement client side of worker service protocol.
-	 * process idx file transparently.
+	 * 1。监控workerList,保证每个worker下启动的线程数量（默认为2）
+	 * 2。删除终止运行的线程，辨别终止运行的异常，在非sokect异常时，向workerManager释放workerInfo.
+	 * 3。监控各线程中的globalEnvis的版本号，并维护累积变量envisUpdateRecords.
+	 */
+	@Override
+	public void run() {
+		//TODO this对象生成时要周期性的运行这部分代码。
+		Set<Integer> allWs =  workerWare.getMachineSet();
+		for(Integer m: allWs) {
+			List<DispatchTaskChannel> liConns = glAllTaskConns.get(m);
+			if(liConns == null) {
+				glAllTaskConns.put(m, new LinkedList<DispatchTaskChannel>());
+				liConns = glAllTaskConns.get(m);
+			}
+			for(Iterator<DispatchTaskChannel> it=liConns.iterator(); it.hasNext();){
+				if(it.next()==null || ! it.next().isValidState) {
+					it.remove();
+				}
+			}
+			while(liConns.size()<connNumPerWorker) {
+				BlockingQueue<String>[] arrIdxQue = new BlockingQueue[1];
+				WorkerInfo w = workerWare.allocateOne(m, arrIdxQue);
+				if(w == null){
+					//一次分配失败，就说明以前分配的同一机器下的workerInfo失效了。
+					for(DispatchTaskChannel t: liConns){
+						t.isValidState = false;
+					}
+					liConns.clear();
+					break;
+				}
+				//打开sokect, 创建DispatchTaskChannel对象，启动线程，添加对象到管理容器。
+				Socket s = null;
+				try{
+					s = new Socket(w.strIp, w.port);
+					DispatchTaskChannel t = new DispatchTaskChannel(s, arrIdxQue[0]);
+					new Thread(t, "DispatchTaskChannel thread").start();
+					liConns.add(t);
+				}
+				catch(Exception e){
+					//对收到的所有异常，还是盲目地看作socket异常，并清空所有的机器m相关的连接对象。
+					if(s != null){
+						try {
+							s.close();
+						} catch (IOException e1) {
+							e1.printStackTrace();
+						}						
+					}
+					for(DispatchTaskChannel t: liConns){
+						t.isValidState = false;
+					}
+					liConns.clear();
+					break;
+				}
+				
+			}//while(liConns.size())
+		}//for(m)
+		//维护变量 envisUpdateRecords。
+		int smallest = Collections.max(envisUpdateRecords.keySet());
+		for(Integer i: glAllTaskConns.keySet()) {
+			if(glAllTaskConns.get(i) != null){
+				for(DispatchTaskChannel t: glAllTaskConns.get(i)) {
+					if(t.usedSecondAccessGEnvis != 0 && t.usedSecondAccessGEnvis<smallest){
+						smallest = t.usedSecondAccessGEnvis;
+					}
+				}
+			}
+		}
+		for(Iterator<Map.Entry<Integer, Map<String,String>>> it=envisUpdateRecords.entrySet().iterator();it.hasNext(); ){
+			if(it.next().getKey() < smallest){
+				it.remove();
+			}
+		}
+	}
+
+	/**
+	 * implement client side of keyword service.
+	 * 
 	 * @author thinkit
 	 *
 	 */
@@ -91,10 +176,12 @@ public class CenterKeywordServiceImpl implements CenterKeywordService{
 	//	Socket socket;
 		ObjectOutputStream out;
 		ObjectInputStream in;
-		Integer usedSecondAccessGEnvis = 0; //definitely can be zero.
-		boolean isValidState = true;
-		public DispatchTaskChannel(Socket s) {
+		BlockingQueue<String> idxFileQueue;
+		volatile int usedSecondAccessGEnvis = 0; //definitely can be zero.
+		volatile boolean isValidState = true; //currently, ignoring the cause for zero setting.
+		public DispatchTaskChannel(Socket s, BlockingQueue<String> idxQue) {
 			try{
+				this.idxFileQueue = idxQue	;
 				// send globalEnvis.
 				out = new ObjectOutputStream(s.getOutputStream());
 				out.writeObject(cloneGlobalEnvis(usedSecondAccessGEnvis));
@@ -139,7 +226,7 @@ public class CenterKeywordServiceImpl implements CenterKeywordService{
 			//TODO 若reqID 为 -1 就 保存idx data ，添加任务到同步队列，并返回null.
 			if(pag.reqID.equals("-1")) {
 				if(pag.idxFilePath!= null && pag.idxData!=null) {
-					writeIdxFile(cmder.dataRoot+pag.idxFilePath, pag.idxData);
+					writeIdxFile(workerWare.dataRoot+pag.idxFilePath, pag.idxData);
 				}
 			}
 			//TODO 若onlineSearch 且 成功 就保存idx data, 添加任务到同步队列。
@@ -172,17 +259,19 @@ public class CenterKeywordServiceImpl implements CenterKeywordService{
 			catch (ClassNotFoundException e) {
 				e.printStackTrace();
 			}
+			finally{
+				isValidState = false;			
+			}
 		}
-		
 	}
 
-	
-	
+	private int connNumPerWorker = 2;
+	private Map<Integer, List<DispatchTaskChannel> > glAllTaskConns
+	= new HashMap<Integer,List<DispatchTaskChannel>>(); //only used by run method.
 	Map<String, String> globalEnvis = Collections.synchronizedMap(new HashMap<String, String>());
-//TODO: how do we synchronize the change of global variables
-	//store changing action, for retrieved by Dispatching threads.
-	//the modification of the following 2 vars must be locked by object gloablEnvis.
-	// the access for var globalEnvisVer may be locked by object globalEnvis.
+	//store changing action, then be used by Dispatching threads.
+	//access to var globalEnvisVer, envisUpdateRecords must be locked by the above var
+	//globalEnvis.
 	int globalEnvisVer = 0;
 	Map<Integer, Map<String, String>> envisUpdateRecords
 	= Collections.synchronizedMap(new HashMap<Integer, Map<String, String>>());
@@ -190,7 +279,8 @@ public class CenterKeywordServiceImpl implements CenterKeywordService{
 	BlockingQueue<KeywordRequestPacket> reqQueue = new LinkedBlockingQueue<KeywordRequestPacket>(200000);
 	BlockingQueue<KeywordResultPacket> resQueue = new LinkedBlockingQueue<KeywordResultPacket>(200000);
 	Logger myLogger = Logger.getLogger("zsr.keyword");
-	WorkerManagement cmder = WorkerManagement.onlyOne;
+	private WorkerManagement workerWare = WorkerManagement.onlyOne;
+
 }
 
 class MySocketInteractException extends IOException {
