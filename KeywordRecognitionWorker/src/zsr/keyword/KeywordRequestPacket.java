@@ -28,11 +28,8 @@ public class KeywordRequestPacket {
 	 * @author thinkit
 	 *
 	 */
-	public static enum RequestType{
-		OfflineSearch, OnlineSearch
-	}
 	public String id;
-	RequestType type;
+	KeywordRequestType type;
 	/**
 	 * when storing global variable name, format $xxx.
 	 */
@@ -53,4 +50,8 @@ class WorkerKeywordRequestPacket extends KeywordRequestPacket {
 		String addStr = "";
 		return super.toString() + " " + addStr;
 	}
+}
+
+enum KeywordRequestType{
+	OfflineSearch, OnlineSearch
 }

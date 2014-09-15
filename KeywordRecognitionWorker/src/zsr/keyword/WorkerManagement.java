@@ -39,7 +39,7 @@ public class WorkerManagement implements Runnable{
 		Handler h= new ConsoleHandler();
 		h.setLevel(Level.ALL);
 		myLogger.addHandler(h);
-		
+				
 		manaThread = new Thread(this,"worker management");
 		manaThread.start();
 	}
@@ -62,7 +62,7 @@ public class WorkerManagement implements Runnable{
 	 * @param refBQue
 	 * @return
 	 */
-	public WorkerInfo allocateOne(int imach, BlockingQueue<String> [] refBQue) {
+	public WorkerInfo allocateOne(int imach, BlockingQueue<IdxFileSynch> [] refBQue) {
 		WorkerInfo ret = null;
 		synchronized(currentWorkerSpace) {
 			if(!currentWorkerSpace.containsKey(imach) || currentWorkerSpace.get(imach) == null) {
@@ -101,9 +101,9 @@ public class WorkerManagement implements Runnable{
 	@Override
 	public void run() {
 		// TODO Auto-generated method stub
+		ClientThreadCab cab = new ClientThreadCab();
 		try{
-			ClientThreadCab cab = new ClientThreadCab();
-			ServerSocket server = new ServerSocket(8828);
+			ServerSocket server = new ServerSocket(centerPort);
 			while(! Thread.interrupted()) {
 				try{
 					if(cab.hasRoom()){
@@ -132,13 +132,58 @@ public class WorkerManagement implements Runnable{
 			e.printStackTrace();
 		}
 	}
-	
+	private TransferedFileSpace getSynchSpace(String strIp) {
+		//附加逻辑: 把taskQueue中信息转移到synchSpace中。
+		//遍历idxFileSpace要枷锁
+		Set<String> allIps = null;
+		synchronized(idxFileSpace) {
+			allIps = new HashSet<String>(idxFileSpace.keySet());
+		}
+		for(String curIp: allIps) {
+			BlockingQueue<IdxFileSynch> bQ = null;
+			synchronized(idxFileSpace) {
+				if(idxFileSpace.get(curIp)!= null){
+					bQ = idxFileSpace.get(curIp).taskQueue;
+				}
+			}
+			if(bQ != null) {
+				while(true){
+					IdxFileSynch synch = bQ.poll();
+					if(synch == null) break;
+					//追加到除当前ip之外的，其他ip下的同步文件空间中。
+					if(synch.hasOrNot ==true){
+						synchronized(idxFileSpace){
+							for(String s: idxFileSpace.keySet()){
+								if(s != curIp && idxFileSpace.get(s)!=null){
+									idxFileSpace.get(s).synchSpace.pushOne(synch.idxFile, true);
+								}
+							}
+						}
+					}
+					//追加到当前ip下的同步文件空间中。
+					else{
+						synchronized(idxFileSpace){
+							if(idxFileSpace.get(curIp)!=null){
+								idxFileSpace.get(curIp).synchSpace.pushOne(synch.idxFile, true);
+							}
+						}
+					}
+				}
+				
+			}
+		}
+		TransferedFileSpace ret = null;
+		synchronized(idxFileSpace){
+			ret = idxFileSpace.get(strIp).synchSpace.splitAll();
+		}
+		return 	ret;
+	}
 	/**
 	 * 若参数中的机器信息不在列表中，就增加一项；
 	 * 若参数中的机器信息已在列表中存在，且内容相等，就更新一下实时信息；
 	 * 若参数中的机器信息已在列表中存在，但内容不相等，就操作失败。
 	 * @param worker
-	 * @param synchSpace 返回从跟机器信息相应的同步文件结构中截掉的同步文件信息。
+	 * @param synchSpace 返回从地址相关的任务队列中取得的，需要在管理连接中传递的同步文件信息。
 	 * 
 	 */
 	private boolean addOnWorkerList(WorkerInfo worker, TransferedFileSpace[] refSynchSpace) {
@@ -150,8 +195,8 @@ public class WorkerManagement implements Runnable{
 					//update real time Info.
 					currentWorkerSpace.get(iMach).lastActiveTime = new Date();
 					currentWorkerSpace.get(iMach).reallocTime  = REALLOCNUM;
-					if (refSynchSpace != null) {
-						refSynchSpace[0] = idxFileSpace.get(worker.strIp).synchSpace.splitAll();
+					if (refSynchSpace != null) {					
+						refSynchSpace[0] = getSynchSpace(worker.strIp);
 					}
 					return true;
 				}
@@ -319,14 +364,27 @@ public class WorkerManagement implements Runnable{
 		 */
 	//	TransferedFileSpace needSynchroTasks;
 	}
-	
-	private class AddressRelatedSpace{		
-		BlockingQueue<String> taskQueue = new LinkedBlockingQueue<String>();
-		TransferedFileSpace synchSpace = new TransferedFileSpace();
+	/**
+	 * hasOrNot为0，表示出来我没有此文件；hasOrNot为1，表示我有次文件。
+	 * @author Administrator
+	 *
+	 */
+	static class IdxFileSynch{
+		public IdxFileSynch(boolean hasOrNot, String idxFile) {
+			this.hasOrNot = hasOrNot;
+			this.idxFile = idxFile;
+		}
+		final boolean hasOrNot;
+		final String idxFile;
+	}
+	private static class AddressRelatedSpace{	
+		final BlockingQueue<IdxFileSynch> taskQueue = new LinkedBlockingQueue<IdxFileSynch>();
+		final TransferedFileSpace synchSpace = new TransferedFileSpace();
 	}
 	
-	Thread manaThread;
-	int centerPort = 8828;
+	private Thread manaThread;
+	private int centerPort = 8828;
+	//TODO dataRoot 绝对需要在中心机配置，怎么把它分配到工作机呢？
 	String dataRoot = "D:\\keywordCenter\\idxData\\";
 	private final int REALLOCNUM = 5;
 	/**

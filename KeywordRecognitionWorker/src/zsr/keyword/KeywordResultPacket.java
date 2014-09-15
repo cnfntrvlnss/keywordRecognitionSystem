@@ -13,10 +13,8 @@ public class KeywordResultPacket {
 		return super.toString()+" "+addStr;
 	}
 	public String reqID;
-	public static enum Result{
-		success, fileIOError, recognitionError
-	}
-	Result res;
+	KeywordRequestType type;
+	KeywordResultType res;
 	public String comment;
 }
 
@@ -29,4 +27,7 @@ class WorkerKeywordResultPacket extends KeywordResultPacket{
 	public byte[] idxData;
 	public String workerID;
 	public String idxFilePath;
+}
+enum KeywordResultType{
+	success, fileMissError, InternalError, recognitionError
 }

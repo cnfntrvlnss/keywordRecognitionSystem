@@ -1,5 +1,6 @@
 package zsr.keyword;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -15,6 +16,7 @@ import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.Logger;
+
 import static zsr.keyword.FuncUtil.*;
 /**
  * 实现关键词识别，检索的统一接口，内部实现包括对识别服务客户线程的实现 与管理。
@@ -112,7 +114,7 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 				}
 			}
 			while(liConns.size()<connNumPerWorker) {
-				BlockingQueue<String>[] arrIdxQue = new BlockingQueue[1];
+				BlockingQueue<WorkerManagement.IdxFileSynch>[] arrIdxQue = new BlockingQueue[1];
 				WorkerInfo w = workerWare.allocateOne(m, arrIdxQue);
 				if(w == null){
 					//一次分配失败，就说明以前分配的同一机器下的workerInfo失效了。
@@ -176,12 +178,12 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 	//	Socket socket;
 		ObjectOutputStream out;
 		ObjectInputStream in;
-		BlockingQueue<String> idxFileQueue;
+		BlockingQueue<WorkerManagement.IdxFileSynch> idxFileQueue;
 		volatile int usedSecondAccessGEnvis = 0; //definitely can be zero.
 		volatile boolean isValidState = true; //currently, ignoring the cause for zero setting.
-		public DispatchTaskChannel(Socket s, BlockingQueue<String> idxQue) {
+		public DispatchTaskChannel(Socket s, BlockingQueue<WorkerManagement.IdxFileSynch> idxQue) {
 			try{
-				this.idxFileQueue = idxQue	;
+				this.idxFileQueue = idxQue;
 				// send globalEnvis.
 				out = new ObjectOutputStream(s.getOutputStream());
 				out.writeObject(cloneGlobalEnvis(usedSecondAccessGEnvis));
@@ -218,22 +220,39 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 			return new WorkerKeywordRequestPacket(pag);	
 		}
 		/**
-		 * 
+		 * 暂且实现为TaskType为online时，去除包中的索引文件，并添加同步命令；若为offline, 就直接返回。
 		 * @param pag
 		 * @return
 		 */
-		KeywordResultPacket unwrapWorkerPacket(WorkerKeywordResultPacket pag) {
-			//TODO 若reqID 为 -1 就 保存idx data ，添加任务到同步队列，并返回null.
+		KeywordResultPacket unwrapWorkerPacket(WorkerKeywordResultPacket pag) throws
+		InterruptedException{
+			/*
+			//T ODO 若reqID 为 -1 就 保存idx data ，添加任务到同步队列，并返回null.
 			if(pag.reqID.equals("-1")) {
 				if(pag.idxFilePath!= null && pag.idxData!=null) {
 					writeIdxFile(workerWare.dataRoot+pag.idxFilePath, pag.idxData);
 				}
+				return null;
 			}
-			//TODO 若onlineSearch 且 成功 就保存idx data, 添加任务到同步队列。
-			//TODO 若offlineSearch 且 由于没有idx file而失败，查找center上有没有
+			//T ODO 若onlineSearch 且 成功 就保存idx data, 添加任务到同步队列。
+			//T ODO 若offlineSearch 且 由于没有idx file而失败，添加到同步查找center上有没有
 			//idx data，若有就发起同步过程，若没有就追加一个ID 为-1的请求包到reqQueue.
-
-			return null;
+*/
+			if(pag.type == KeywordRequestType.OnlineSearch){
+				if(pag.idxFilePath!= null && pag.idxData!=null) {
+					writeIdxFile(workerWare.dataRoot+pag.idxFilePath, pag.idxData);
+				}
+				idxFileQueue.put(new WorkerManagement.IdxFileSynch(true, pag.idxFilePath));
+			}
+			else if(pag.type == KeywordRequestType.OfflineSearch) {
+				if(pag.res == KeywordResultType.fileMissError) {
+					if(pag.idxFilePath != null && new File(workerWare.dataRoot+pag.idxFilePath).exists()){
+						idxFileQueue.put(new WorkerManagement.IdxFileSynch(false, pag.idxFilePath));
+					}
+				}
+			}
+			
+			return new KeywordResultPacket(pag);			
 		}
 		@Override
 		public void run() {
