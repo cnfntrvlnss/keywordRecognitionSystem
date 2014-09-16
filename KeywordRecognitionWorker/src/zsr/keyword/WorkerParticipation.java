@@ -27,8 +27,8 @@ public class WorkerParticipation implements Runnable{
 		myLogger.addHandler(h);
 		
 		
-		clientThread = new Thread(this, "worker participation");
-		clientThread.start();
+		connThread = new Thread(this, "worker participation");
+		connThread.start();
 	}
 	public static WorkerParticipation onlyOne = new WorkerParticipation();
 	@Override
@@ -46,25 +46,35 @@ public class WorkerParticipation implements Runnable{
 				myLogger.fine("new socket: "+"local "+s.getLocalSocketAddress()+"remote "+s.getRemoteSocketAddress());
 				ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream());
 				out.writeObject(recogServer);
-				myLogger.info("have notified keyword server, "+recogServer);
+				myLogger.info("have notified keyword server: "+recogServer);
 				ObjectInputStream in = new ObjectInputStream(s.getInputStream());
-				TransferedFileSpace ret = (TransferedFileSpace)in.readObject();
-				myLogger.info("have received feedback, " + ret.toString());
-				if (ret.downFiles.size()>0){
-					Map<String, byte[]> allFiles = ret.downFiles;
-					ret.downFiles = new HashMap<String, byte[]>();
-					for(String key : allFiles.keySet()) {
-						String filePath = dataRoot+ key;
-						writeIdxFile(filePath, allFiles.get(key));
-					}
+				Object ret = in.readObject();
+				if(ret instanceof GlobalEnviroment){
+					GE = (GlobalEnviroment) ret;
 				}
-				if (ret.upFiles.size()>0) {
-					//TODO: 填充upfiles中的文件内容。
-					for(String key : ret.upFiles.keySet()) {
-						ret.upFiles.put(key, readIdxFile(dataRoot+key));
+				else if(ret instanceof TransferedFileSpace){
+					TransferedFileSpace tf = (TransferedFileSpace)ret;
+					myLogger.info("have received feedback: " + ret.toString());
+					if (tf.downFiles.size()>0){
+						Map<String, byte[]> allFiles = tf.downFiles;
+						tf.downFiles = new HashMap<String, byte[]>();
+						for(String key : allFiles.keySet()) {
+							String filePath = dataRoot+ key;
+							writeIdxFile(filePath, allFiles.get(key));
+						}
 					}
-					out.writeObject(ret);
-				}				
+					if (tf.upFiles.size()>0) {
+						//TODO: 填充upfiles中的文件内容。
+						for(String key : tf.upFiles.keySet()) {
+							tf.upFiles.put(key, readIdxFile(dataRoot+key));
+						}
+						out.writeObject(tf);
+					}				
+				}
+				else {
+					//ignore this branch.
+				}
+				
 			}
 			catch (IOException e) {
 				e.printStackTrace();
@@ -94,10 +104,11 @@ public class WorkerParticipation implements Runnable{
 		return recogServer;
 	}
 	
-	Thread clientThread;
+	Thread connThread;
 	String centerIp = "localhost";
 	int centerPort = 8828;
 	WorkerInfo recogServer;
+	GlobalEnviroment GE;
 	String dataRoot = "D:\\keywordRecognition\\idxData\\";
 	Logger myLogger = Logger.getLogger("zsr.keyword");
 

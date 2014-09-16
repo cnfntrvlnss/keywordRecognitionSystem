@@ -1,5 +1,7 @@
 package zsr.keyword;
 
+import java.util.Deque;
+
 /**
  * packet between client and center.
  * @author Administrator
@@ -29,13 +31,11 @@ public class KeywordRequestPacket {
 	 *
 	 */
 	public String id;
-	KeywordRequestType type;
-	/**
-	 * when storing global variable name, format $xxx.
-	 */
+	public KeywordRequestType type;
+
 	public String keywords;
 	public String audioFile;	
-
+	public Deque<String> loopStack; //用于result packet 返回路径的判定。
 }
 /**
  * packet between center and worker.

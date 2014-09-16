@@ -9,11 +9,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 /**
- * 
+ * when storing global variable name, format $xxx.
  * @author thinkit
  *
  */
 public interface CenterKeywordService {
+
 	void addGlobalEnvi(Map<String, String> map);
 	void removeGlobalEnvi(Set<String> set);
 	Set<String> getGlobalVariable();

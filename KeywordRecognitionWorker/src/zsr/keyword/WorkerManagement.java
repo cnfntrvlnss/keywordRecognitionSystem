@@ -182,10 +182,10 @@ public class WorkerManagement implements Runnable{
 	 * 若参数中的机器信息已在列表中存在，且内容相等，就更新一下实时信息；
 	 * 若参数中的机器信息已在列表中存在，但内容不相等，就操作失败。
 	 * @param worker
-	 * @param synchSpace 返回从地址相关的任务队列中取得的，需要在管理连接中传递的同步文件信息。
+	 * @param refOut 若首次添加，返回为worker指定的全局变量信息；若非首次，就返回可能有的索引文件同步信息。
 	 * 
 	 */
-	private boolean addOnWorkerList(WorkerInfo worker, TransferedFileSpace[] refSynchSpace) {
+	private boolean addOnWorkerList(WorkerInfo worker, Object[] refOut) {
 		synchronized(currentWorkerSpace) {
 			int iMach = worker.machine;
 			if(currentWorkerSpace.containsKey(iMach) && currentWorkerSpace.get(iMach)
@@ -194,8 +194,8 @@ public class WorkerManagement implements Runnable{
 					//update real time Info.
 					currentWorkerSpace.get(iMach).lastActiveTime = new Date();
 					currentWorkerSpace.get(iMach).reallocTime  = REALLOCNUM;
-					if (refSynchSpace != null) {					
-						refSynchSpace[0] = getSynchSpace(worker.strIp);
+					if (refOut != null) {					
+						refOut[0] = getSynchSpace(worker.strIp);
 					}
 					return true;
 				}
@@ -216,7 +216,10 @@ public class WorkerManagement implements Runnable{
 			}
 			
 			currentWorkerSpace.put(worker.machine, new StoredWorkerInfo(worker));
-			return false;
+			if(refOut != null) {
+				refOut[0] = GE;
+			}
+			return true;
 		
 		}
 	}
@@ -248,7 +251,7 @@ public class WorkerManagement implements Runnable{
 	 * worker管理端口（8828端口）的处理逻辑。
 	 * protocal 1-1:
 	 * 1. c->s: workerInfo
-	 * 2. s->c: TransferedFileSpace
+	 * 2. s->c: TransferedFileSpace or GlobalEnviroment.
 	 * 3. c->s: if TranferedFileSpace::upFiles has values, then TransferedFileSpace.
 	 * @author thinkit
 	 *
@@ -259,8 +262,6 @@ public class WorkerManagement implements Runnable{
 		}
 		@Override
 		public void run() {
-			// TODO Auto-generated method stub
-			//从这儿，用一种方式，可获取worker/center中缺失的文件，放到任务队列中，
 			ObjectInputStream in = null;
 			ObjectOutputStream out = null;
 			try{
@@ -268,22 +269,27 @@ public class WorkerManagement implements Runnable{
 				out = new ObjectOutputStream(socket.getOutputStream());
 				WorkerInfo one = (WorkerInfo)in.readObject();
 				myLogger.info("received worker info: "+ one);
-				TransferedFileSpace[] refSend = new TransferedFileSpace[1];
+				Object[] refSend = new Object[1];
 				addOnWorkerList(one, refSend);
-				TransferedFileSpace send = refSend[0];
-				if (send == null) {
-					send = new TransferedFileSpace();
+				if(refSend[0] ==null){
+					out.writeObject(new Object());
 				}
-				myLogger.info(send.toString());
-				for(String key : send.downFiles.keySet()) {
-					send.downFiles.put(key, readIdxFile(dataRoot+key));
-				}
-				out.writeObject(send);
-				if (!send.upFiles.isEmpty()){
-					TransferedFileSpace receive = (TransferedFileSpace) in.readObject();
-					for(String key : receive.upFiles.keySet()) {
-						writeIdxFile(dataRoot+key, receive.upFiles.get(key));
+				else if(refSend[0] instanceof TransferedFileSpace){
+					TransferedFileSpace send = (TransferedFileSpace) refSend[0];
+					myLogger.info("sending to worker: "+ send.toString());
+					for(String key: ((TransferedFileSpace)send).downFiles.keySet()) {
+						send.downFiles.put(key, readIdxFile(dataRoot+key));
 					}
+					out.writeObject(send);
+					if(!send.upFiles.isEmpty()){
+						TransferedFileSpace receive = (TransferedFileSpace) in.readObject();
+						for(String key : receive.upFiles.keySet()) {
+							writeIdxFile(dataRoot+key, receive.upFiles.get(key));
+						}				
+					}
+				}
+				else if(refSend[0] instanceof GlobalEnviroment) {
+					out.writeObject(refSend[0]);
 				}
 			}
 			catch(IOException e) {
@@ -383,7 +389,8 @@ public class WorkerManagement implements Runnable{
 	
 	private Thread manaThread;
 	private int centerPort = 8828;
-	//TODO dataRoot 绝对需要在中心机配置，怎么把它分配到工作机呢？
+	//TODO ftp路径需要在中心机配置，怎么把它分配到工作机呢？
+	final GlobalEnviroment GE = new GlobalEnviroment("localhost","root","toor");
 	String dataRoot = "D:\\keywordCenter\\idxData\\";
 	private final int REALLOCNUM = 5;
 	/**
@@ -509,6 +516,23 @@ class TransferedFileSpace implements Serializable {
 	}
 }
 
+class GlobalEnviroment implements Serializable {
+
+	private static final long serialVersionUID = 1L;
+	public GlobalEnviroment(String root, String usr, String pwd) {
+		this.ftpRoot = root;
+		this.ftpUsr = usr;
+		this.ftpPwd = pwd;
+	}
+	@Override
+	public String toString() {
+		String add = " ftp:"+ftpUsr+"|"+ftpPwd+"@"+ftpRoot;
+		return super.toString()+add;
+	}
+	String ftpRoot;
+	String ftpUsr;
+	String ftpPwd;
+}
 
 
 
