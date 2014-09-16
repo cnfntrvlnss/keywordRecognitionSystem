@@ -226,18 +226,6 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 		 */
 		KeywordResultPacket unwrapWorkerPacket(WorkerKeywordResultPacket pag) throws
 		InterruptedException{
-			/*
-			//T ODO 若reqID 为 -1 就 保存idx data ，添加任务到同步队列，并返回null.
-			if(pag.reqID.equals("-1")) {
-				if(pag.idxFilePath!= null && pag.idxData!=null) {
-					writeIdxFile(workerWare.dataRoot+pag.idxFilePath, pag.idxData);
-				}
-				return null;
-			}
-			//T ODO 若onlineSearch 且 成功 就保存idx data, 添加任务到同步队列。
-			//T ODO 若offlineSearch 且 由于没有idx file而失败，添加到同步查找center上有没有
-			//idx data，若有就发起同步过程，若没有就追加一个ID 为-1的请求包到reqQueue.
-*/
 			if(pag.type == KeywordRequestType.OnlineSearch){
 				if(pag.idxFilePath!= null && pag.idxData!=null) {
 					writeIdxFile(workerWare.dataRoot+pag.idxFilePath, pag.idxData);
