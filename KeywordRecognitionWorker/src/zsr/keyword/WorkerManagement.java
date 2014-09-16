@@ -103,7 +103,7 @@ public class WorkerManagement implements Runnable{
 		ClientThreadCab cab = new ClientThreadCab();
 		try{
 			ServerSocket server = new ServerSocket(centerPort);
-			while(! Thread.interrupted()) {
+			while(! Thread.currentThread().isInterrupted()) {
 				try{
 					if(cab.hasRoom()){
 						Socket s = server.accept();

@@ -52,6 +52,7 @@ public class FuncUtil {
 	
 	/**
 	 * 要确保写文件时，是操作系统级互斥的。
+	 * 确保不抛出异常，但运行失败。
 	 * @param file
 	 */
 	public static void writeIdxFile(String file, byte[] data) {
@@ -80,7 +81,11 @@ public class FuncUtil {
 			}
 		}
 	}
-	
+	/**
+	 * 
+	 * @param file
+	 * @return
+	 */
 	public static byte[] readIdxFile(String file) {
 		File f = new File(file);
 		if(!f.exists()) {
