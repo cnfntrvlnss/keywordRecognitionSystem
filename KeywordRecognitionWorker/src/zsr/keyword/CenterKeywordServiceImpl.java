@@ -74,9 +74,9 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 		return ret;
 	}
 	
-	private Map<String, String> cloneGlobalEnvis(Integer outVer){
+	private Map<String, String> cloneGlobalEnvis(Integer[] outVer){
 		synchronized(globalEnvis) {
-			outVer = globalEnvisVer;
+			outVer[0] = globalEnvisVer;
 			return new HashMap<String, String>(globalEnvis);
 		}
 	}
@@ -155,8 +155,8 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 		for(Integer i: glAllTaskConns.keySet()) {
 			if(glAllTaskConns.get(i) != null){
 				for(DispatchTaskChannel t: glAllTaskConns.get(i)) {
-					if(t.usedSecondAccessGEnvis != 0 && t.usedSecondAccessGEnvis<smallest){
-						smallest = t.usedSecondAccessGEnvis;
+					if(t.curGEnviVersion != 0 && t.curGEnviVersion<smallest){
+						smallest = t.curGEnviVersion;
 					}
 				}
 			}
@@ -179,14 +179,16 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 		ObjectOutputStream out;
 		ObjectInputStream in;
 		BlockingQueue<WorkerManagement.IdxFileSynch> idxFileQueue;
-		volatile int usedSecondAccessGEnvis = 0; //definitely can be zero.
+		public volatile int curGEnviVersion = 0; //definitely can be zero.
 		volatile boolean isValidState = true; //currently, ignoring the cause for zero setting.
 		public DispatchTaskChannel(Socket s, BlockingQueue<WorkerManagement.IdxFileSynch> idxQue) {
 			try{
 				this.idxFileQueue = idxQue;
 				// send globalEnvis.
 				out = new ObjectOutputStream(s.getOutputStream());
-				out.writeObject(cloneGlobalEnvis(usedSecondAccessGEnvis));
+				Integer[] refVer = new Integer[1];
+				out.writeObject(cloneGlobalEnvis(refVer));
+				curGEnviVersion = refVer[0];
 				String rec = (String) in.readObject();
 				if(rec != "OK") {
 					throw new MySocketInteractException ("unexpected socket message, after sending gloabl envis.");
@@ -247,9 +249,9 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 			// TODO Auto-generated method stub
 			try{
 				while(isValidState) {
-					if(envisUpdateRecords.get(usedSecondAccessGEnvis+1) != null){
-						out.writeObject(envisUpdateRecords.get(usedSecondAccessGEnvis+1));
-						usedSecondAccessGEnvis ++;
+					if(envisUpdateRecords.get(curGEnviVersion+1) != null){
+						out.writeObject(envisUpdateRecords.get(curGEnviVersion+1));
+						curGEnviVersion ++;
 					}
 					KeywordRequestPacket ret = reqQueue.take();
 					out.writeObject(wrapWorkerPacket(ret));
@@ -267,7 +269,12 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 				e.printStackTrace();
 			}
 			finally{
-				isValidState = false;			
+				isValidState = false;	
+				try {
+					out.close();
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
 			}
 		}
 	}

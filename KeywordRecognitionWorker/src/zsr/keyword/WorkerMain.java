@@ -6,6 +6,7 @@ import static zsr.keyword.FuncUtil.writeIdxFile;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashMap;
 import java.util.Map;
@@ -31,12 +32,33 @@ public class WorkerMain implements Runnable{
 	@Override
 	public void run() {
 		// TODO Auto-generated method stub
+		Integer[] refStart = new Integer[1];
+		refStart[0] = startPort;
+		ServerSocket server= null;
+		while(server != null) {
+			try{
+				server = new ServerSocket(refStart[0]++);
+			}
+			catch(IOException e) {
+				e.printStackTrace();
+			}
+		}
+		myLogger.info("WorkerMain "+iMachine+" start keywordSerices at port " + refStart[0]);
+		while(! Thread.currentThread().isInterrupted()) {
+			
+			try{
+					Socket s = server.accept();
 		
+			}
+			catch(IOException e){
+				e.printStackTrace();
+			}
+		}
 	}
 
 	/**
 	 * 与中心机管理端口的通信逻辑，包括读写需要同步的idx文件。
-	 * 需要定期执行。
+	 * 需要周期执行。
 	 * @author Administrator
 	 *
 	 */
@@ -121,9 +143,55 @@ public class WorkerMain implements Runnable{
 		int centerPort = 8828;
 	}
 
-	private class KeywordLogicThread implements Runnable {
+	/**
+	 * 还需要一个线程管理所有的channel和单个es之间的协调。
+	 * @author thinkit
+	 *
+	 */
+	private class WorkerServiceChannel implements Runnable {
+		ObjectOutputStream out;
+		ObjectInputStream in;
+		volatile boolean isValidState = true; //currently, ignoring the cause for zero setting.
 		
+		public WorkerServiceChannel(Socket s){
+			try{
+				in = new ObjectInputStream(s.getInputStream());
+				glEnvis = (Map<String, String>) in.readObject();
+				out = new ObjectOutputStream(s.getOutputStream());
+				out.writeObject(new String("OK"));
+			}
+			catch(IOException e) {
+				e.printStackTrace();
+				isValidState = false;
+			}
+			catch(ClassNotFoundException e) {
+				e.printStackTrace();
+				isValidState = false;
+			}
+		}
+		@Override
+		public void run() {
+			// TODO Auto-generated method stub
+			try{
+				while(isValidState) {
+					
+				}
+			}
+			finally{
+				isValidState = false;
+				try {
+					out.close();
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		
+		Map<String, String> glEnvis;
 	}
+	
+	int iMachine = 1;
+	int startPort = 8899;
 	Thread mainThread;
 	WorkerInfo recogServer;
 	GlobalEnviroment GE;
@@ -131,7 +199,7 @@ public class WorkerMain implements Runnable{
 	Logger myLogger = Logger.getLogger("zsr.keyword");
 	WorkerParticipation notifier = new WorkerParticipation();
 	
-	
+	EngineKeywordService es = EngineKeywordService.getOnlyInstance();
 	/**
 	 * @param args
 	 */
