@@ -14,7 +14,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 import static zsr.keyword.FuncUtil.*;
@@ -26,11 +29,11 @@ import static zsr.keyword.FuncUtil.*;
 public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 
 	private CenterKeywordServiceImpl() {
-		
+		scheduler.scheduleAtFixedRate(this, 1, 10, TimeUnit.SECONDS);
 	}
 	public static CenterKeywordServiceImpl onlyOne = new CenterKeywordServiceImpl();
 	
-	
+	ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 	/**
 	 * @param args
 	 */

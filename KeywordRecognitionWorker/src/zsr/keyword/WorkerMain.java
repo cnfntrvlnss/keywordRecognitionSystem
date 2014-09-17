@@ -144,7 +144,7 @@ public class WorkerMain implements Runnable{
 	}
 
 	/**
-	 * 还需要一个线程管理所有的channel和单个es之间的协调。
+	 * 还需要一个线程负责所有的channel和单个es之间的协调。
 	 * @author thinkit
 	 *
 	 */
@@ -174,14 +174,41 @@ public class WorkerMain implements Runnable{
 			// TODO Auto-generated method stub
 			try{
 				while(isValidState) {
-					
+					Object obj = in.readObject();
+					if(obj instanceof Map){
+						@SuppressWarnings("unchecked")
+						Map<String, String> m = (Map<String, String>) obj;
+						for(String s: m.keySet()){
+							if(m.get(s) == null){
+								glEnvis.remove(s);
+							}
+							else{
+								glEnvis.put(s, m.get(s));
+							}
+						}
+					}
+					else if(obj instanceof WorkerKeywordRequestPacket){
+						
+					}
+					else {
+						isValidState  = false;
+						throw new MySocketInteractException("recieve unexpected object " +
+								"at worker side of keyword service.");
+					}
 				}
+			}
+			catch(ClassNotFoundException e){
+				e.printStackTrace();
+			}
+			catch(IOException e){
+				e.printStackTrace();
 			}
 			finally{
 				isValidState = false;
 				try {
 					out.close();
-				} catch (IOException e) {
+				} 
+				catch (IOException e) {
 					e.printStackTrace();
 				}
 			}
