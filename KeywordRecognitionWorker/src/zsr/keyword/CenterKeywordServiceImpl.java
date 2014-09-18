@@ -23,6 +23,8 @@ import java.util.logging.Logger;
 import static zsr.keyword.FuncUtil.*;
 /**
  * 实现关键词识别，检索的统一接口，内部实现包括对识别服务客户线程的实现 与管理。
+ * 
+ * 当大量的请求包包含少数几个大变量时，可以把大变量映射为大变量标识符，程序会在识别之前从标识符替换回相应的大变量。
  * @author Administrator
  *
  */
@@ -83,8 +85,9 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 			return new HashMap<String, String>(globalEnvis);
 		}
 	}
-	private static class ServiceChannelImpl implements ServiceChannel{
-		private static int genUId = 0;
+	
+	private int genUId = 0;
+	private class ServiceChannelImpl implements ServiceChannel{
 		private int UId;
 		ServiceChannelImpl(){
 			UId = ++genUId;
@@ -106,19 +109,20 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 			return resultQueue;
 		}
 		
+		@Override 
+		public void close(){
+			allJobs.remove(this);		
+		}
+		
 		final BlockingQueue<KeywordResultPacket> resultQueue = new LinkedBlockingQueue<KeywordResultPacket>();
 		final BlockingQueue<KeywordRequestPacket> requestQueue = new LinkedBlockingQueue<KeywordRequestPacket>();
 	}
 	@Override
 	public ServiceChannel allocateOneChannel() {
 		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public void releaseChannel(ServiceChannel allocated) {
-		// TODO Auto-generated method stub
-		
+		ServiceChannel newOne = new ServiceChannelImpl();
+		allJobs.put(newOne.toString(), newOne);
+		return newOne;
 	}
 
 	/**
@@ -130,6 +134,7 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 	@Override
 	public void run() {
 		//TODO this对象生成时要周期性的运行这部分代码。
+		//维护到识别服务的连接通道： glAllTaskConns.
 		Set<Integer> allWs =  workerWare.getMachineSet();
 		for(Integer m: allWs) {
 			List<DispatchTaskChannel> liConns = glAllTaskConns.get(m);
@@ -179,7 +184,42 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 				
 			}//while(liConns.size())
 		}//for(m)
-		//维护变量 envisUpdateRecords。
+		//前面的队列集与后面的单个队列串连起来。
+		try{
+			synchronized(allJobs) {
+				for(String s: allJobs.keySet()){
+					ServiceChannel sc = allJobs.get(s);
+					sc.getRequestQueue();
+					KeywordRequestPacket pkt = null;
+					do{
+						pkt = sc.getRequestQueue().poll();
+						if(pkt != null){
+							pkt.loopStack.push(s);
+							reqQueue.put(pkt);
+						}
+					}
+					while(pkt != null);
+				}
+				
+				KeywordResultPacket pkt = null;
+				do{
+					pkt = resQueue.poll();
+					if(pkt != null ){
+						ServiceChannel sc = allJobs.get(pkt.loopStack.pop());
+						if(sc != null){
+							sc.getResultQueue().put(pkt);
+						}
+					}
+				}
+				while(pkt != null);
+			}
+		
+		}
+		catch(InterruptedException e){
+			e.printStackTrace();
+		}
+		
+		//维护用于保存GlobalEnvis的变动历史的变量 envisUpdateRecords。
 		int smallest = Collections.max(envisUpdateRecords.keySet());
 		for(Integer i: glAllTaskConns.keySet()) {
 			if(glAllTaskConns.get(i) != null){
@@ -246,16 +286,16 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 		 * @param pag
 		 * @return
 		 */
-		WorkerKeywordRequestPacket wrapWorkerPacket(KeywordRequestPacket pag) {
+		KeywordRequestPacket wrapWorkerPacket(KeywordRequestPacket pag) {
 			
-			return new WorkerKeywordRequestPacket(pag);	
+			return pag;	
 		}
 		/**
 		 * 暂且实现为TaskType为online时，去除包中的索引文件，并添加同步命令；若为offline, 就直接返回。
 		 * @param pag
 		 * @return
 		 */
-		KeywordResultPacket unwrapWorkerPacket(WorkerKeywordResultPacket pag) throws
+		KeywordResultPacket unwrapWorkerPacket(KeywordResultPacket pag) throws
 		InterruptedException{
 			if(pag.type == KeywordRequestType.OnlineSearch){
 				if(pag.idxFilePath!= null && pag.idxData!=null) {
@@ -284,7 +324,7 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 					}
 					KeywordRequestPacket ret = reqQueue.take();
 					out.writeObject(wrapWorkerPacket(ret));
-					WorkerKeywordResultPacket rec = (WorkerKeywordResultPacket)in.readObject();
+					KeywordResultPacket rec = (KeywordResultPacket)in.readObject();
 					resQueue.put(unwrapWorkerPacket(rec));
 				}
 			}
@@ -319,7 +359,8 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 	Map<Integer, Map<String, String>> envisUpdateRecords
 	= Collections.synchronizedMap(new HashMap<Integer, Map<String, String>>());
 	
-	Map<String, ServiceChannel> allTaskChannels;
+	final Map<String, ServiceChannel> allJobs = 
+			Collections.synchronizedMap(new HashMap<String, ServiceChannel>());
 	BlockingQueue<KeywordRequestPacket> reqQueue = new LinkedBlockingQueue<KeywordRequestPacket>(200000);
 	BlockingQueue<KeywordResultPacket> resQueue = new LinkedBlockingQueue<KeywordResultPacket>(200000);
 	Logger myLogger = Logger.getLogger("zsr.keyword");

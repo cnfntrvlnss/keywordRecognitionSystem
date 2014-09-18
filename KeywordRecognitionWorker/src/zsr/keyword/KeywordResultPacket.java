@@ -19,19 +19,13 @@ public class KeywordResultPacket {
 	public Deque<String> loopStack;
 	KeywordResultType res;
 	public String comment;
-}
-
-class WorkerKeywordResultPacket extends KeywordResultPacket{
 	
-	@Override
-	public String toString(){
-		return super.toString();
-	}
 	// 用这三个字段在一个中心机下的集群中传递索引文件。
 	public byte[] idxData;
 	public String workerID;
 	public String idxFilePath;
 }
+
 enum KeywordResultType{
 	success, fileMissError, InternalError, recognitionError
 }

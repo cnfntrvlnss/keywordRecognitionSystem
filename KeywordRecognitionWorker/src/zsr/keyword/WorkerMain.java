@@ -48,7 +48,7 @@ public class WorkerMain implements Runnable{
 			
 			try{
 					Socket s = server.accept();
-		
+					
 			}
 			catch(IOException e){
 				e.printStackTrace();
@@ -144,7 +144,7 @@ public class WorkerMain implements Runnable{
 	}
 
 	/**
-	 * 还需要一个线程负责所有的channel和单个es之间的协调。
+	 * 
 	 * @author thinkit
 	 *
 	 */
@@ -172,6 +172,7 @@ public class WorkerMain implements Runnable{
 		@Override
 		public void run() {
 			// TODO Auto-generated method stub
+			CenterKeywordService.ServiceChannel jobChannel = es.allocateOneChannel();
 			try{
 				while(isValidState) {
 					Object obj = in.readObject();
@@ -187,8 +188,16 @@ public class WorkerMain implements Runnable{
 							}
 						}
 					}
-					else if(obj instanceof WorkerKeywordRequestPacket){
-						
+					else if(obj instanceof KeywordRequestPacket){
+						//替换大变量标识符为大变量本身。
+						//当前是只有关键词列表需要替换。
+						KeywordRequestPacket pkt = (KeywordRequestPacket)obj;
+						if(pkt.keywords != null && pkt.keywords.length()>0 
+								&& pkt.keywords.charAt(0) =='$'){
+							pkt.keywords = glEnvis.get(pkt.keywords);
+						}
+						jobChannel.getRequestQueue().put(pkt);
+						out.writeObject(jobChannel.getResultQueue().take());
 					}
 					else {
 						isValidState  = false;
@@ -203,7 +212,11 @@ public class WorkerMain implements Runnable{
 			catch(IOException e){
 				e.printStackTrace();
 			}
+			catch(InterruptedException e){
+				e.printStackTrace();
+			}
 			finally{
+				jobChannel.close();
 				isValidState = false;
 				try {
 					out.close();

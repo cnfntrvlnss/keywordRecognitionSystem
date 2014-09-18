@@ -37,21 +37,6 @@ public class KeywordRequestPacket {
 	public String audioFile;	
 	public Deque<String> loopStack; //用于result packet 返回路径的判定。
 }
-/**
- * packet between center and worker.
- * @author Administrator
- *
- */
-class WorkerKeywordRequestPacket extends KeywordRequestPacket {
-	public WorkerKeywordRequestPacket(KeywordRequestPacket p){
-		super(p);
-	}
-	@Override
-	public String toString() {
-		String addStr = "";
-		return super.toString() + " " + addStr;
-	}
-}
 
 enum KeywordRequestType{
 	OfflineSearch, OnlineSearch
