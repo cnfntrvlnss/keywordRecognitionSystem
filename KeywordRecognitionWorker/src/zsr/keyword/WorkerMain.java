@@ -221,7 +221,7 @@ public class WorkerMain implements Runnable{
 	int startPort = 8899;
 	Thread mainThread;
 	WorkerInfo recogServer;
-	GlobalEnviroment GE;
+	volatile GlobalEnviroment GE;
 	String dataRoot = "D:\\keywordRecognition\\idxData\\";
 	Logger myLogger = Logger.getLogger("zsr.keyword");
 	WorkerParticipation notifier = new WorkerParticipation();

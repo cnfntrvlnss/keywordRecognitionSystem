@@ -83,23 +83,49 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 			return new HashMap<String, String>(globalEnvis);
 		}
 	}
+	private static class ServiceChannelImpl implements ServiceChannel{
+		private static int genUId = 0;
+		private int UId;
+		ServiceChannelImpl(){
+			UId = ++genUId;
+		}
+		//附加UId的原因是：toString不能产生对象的唯一标识。
+		@Override 
+		public String toString(){
+			return super.toString()+" "+UId;
+		}
+		@Override
+		public BlockingQueue<KeywordRequestPacket> getRequestQueue() {
+			// TODO Auto-generated method stub
+			return requestQueue;
+		}
 
+		@Override
+		public BlockingQueue<KeywordResultPacket> getResultQueue() {
+			// TODO Auto-generated method stub
+			return resultQueue;
+		}
+		
+		final BlockingQueue<KeywordResultPacket> resultQueue = new LinkedBlockingQueue<KeywordResultPacket>();
+		final BlockingQueue<KeywordRequestPacket> requestQueue = new LinkedBlockingQueue<KeywordRequestPacket>();
+	}
 	@Override
-	public BlockingQueue<KeywordRequestPacket> getRequestQueue() {
+	public ServiceChannel allocateOneChannel() {
 		// TODO Auto-generated method stub
-		return reqQueue;
+		return null;
 	}
 
 	@Override
-	public BlockingQueue<KeywordResultPacket> getResultQueue() {
+	public void releaseChannel(ServiceChannel allocated) {
 		// TODO Auto-generated method stub
-		return resQueue;
+		
 	}
-	
+
 	/**
 	 * 1。监控workerList,保证每个worker下启动的线程数量（默认为2）
 	 * 2。删除终止运行的线程，辨别终止运行的异常，在非sokect异常时，向workerManager释放workerInfo.
 	 * 3。监控各线程中的globalEnvis的版本号，并维护累积变量envisUpdateRecords.
+	 * 4. 把allTaskChannels的队列集与全局队列reqQueue/resQueue连接起来。
 	 */
 	@Override
 	public void run() {
@@ -293,6 +319,7 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 	Map<Integer, Map<String, String>> envisUpdateRecords
 	= Collections.synchronizedMap(new HashMap<Integer, Map<String, String>>());
 	
+	Map<String, ServiceChannel> allTaskChannels;
 	BlockingQueue<KeywordRequestPacket> reqQueue = new LinkedBlockingQueue<KeywordRequestPacket>(200000);
 	BlockingQueue<KeywordResultPacket> resQueue = new LinkedBlockingQueue<KeywordResultPacket>(200000);
 	Logger myLogger = Logger.getLogger("zsr.keyword");

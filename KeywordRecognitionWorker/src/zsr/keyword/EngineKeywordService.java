@@ -41,17 +41,6 @@ public class EngineKeywordService implements CenterKeywordService{
 		return null;
 	}
 
-	@Override
-	public BlockingQueue<KeywordRequestPacket> getRequestQueue() {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public BlockingQueue<KeywordResultPacket> getResultQueue() {
-		// TODO Auto-generated method stub
-		return null;
-	}
 
 	/**
 	 * @param args
@@ -59,6 +48,16 @@ public class EngineKeywordService implements CenterKeywordService{
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub
 
+	}
+	@Override
+	public ServiceChannel allocateOneChannel() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+	@Override
+	public void releaseChannel(ServiceChannel allocated) {
+		// TODO Auto-generated method stub
+		
 	}
 
 }

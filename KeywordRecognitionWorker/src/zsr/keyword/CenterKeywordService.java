@@ -15,10 +15,14 @@ import java.util.concurrent.BlockingQueue;
  */
 public interface CenterKeywordService {
 
+	interface ServiceChannel{
+		BlockingQueue<KeywordRequestPacket> getRequestQueue();
+		BlockingQueue<KeywordResultPacket> getResultQueue();
+	}
 	void addGlobalEnvi(Map<String, String> map);
 	void removeGlobalEnvi(Set<String> set);
 	Set<String> getGlobalVariable();
 	Map<String, String> getGlobalEnvi(Set<String> s); 
-	BlockingQueue<KeywordRequestPacket> getRequestQueue();
-	BlockingQueue<KeywordResultPacket> getResultQueue();
+	ServiceChannel allocateOneChannel();
+	void releaseChannel(ServiceChannel allocated);
 }
