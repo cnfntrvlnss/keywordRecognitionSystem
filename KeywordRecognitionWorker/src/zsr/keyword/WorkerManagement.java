@@ -447,6 +447,10 @@ class WorkerInfo implements Serializable {
 		}
 		return false;
 	}
+	@Override
+	public int hashCode(){
+		return machine.hashCode()+strIp.hashCode()+port.hashCode();
+	}
 	/**
 	 * 
 	 */
