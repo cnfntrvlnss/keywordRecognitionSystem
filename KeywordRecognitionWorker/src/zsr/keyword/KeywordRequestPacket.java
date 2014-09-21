@@ -8,7 +8,9 @@ import java.util.Deque;
  *
  */
 public class KeywordRequestPacket {
-	
+	public KeywordRequestPacket(){
+		
+	}
 	public KeywordRequestPacket(KeywordRequestPacket p) {
 		this.id = p.id;
 		this.type = p.type;
