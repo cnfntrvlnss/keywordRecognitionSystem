@@ -1,7 +1,9 @@
 package zsr.keyword;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.lang.reflect.Type;
 import java.net.Socket;
 import java.util.HashMap;
@@ -10,12 +12,14 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 /**
  * 关键词识别系统对外提供的接口，提供一个socket服务端口，并处理客户端连接，处理请求作业。
- * 作业及作业结果的格式是通用的格式JSON? xml? 或 其它。
+ * 作业及作业结果的格式是JSON。
  * 要处理的作业的类型：在线识别与建立历史，历史检索，删除历史。
  * ---删除历史的功能是后考虑进去的，留在前两个实现之后。
  * 
@@ -36,24 +40,31 @@ public class CenterMain implements Runnable {
 		boolean hasUsedGlobName = false;
 		String kwTmpStoredForOnline;//上一个Job用到的keywords变量。若为null，
 		                           //相应的keywords变量就用的是globEnvis中了。
-		private InputStream in;
-		private OutputStream out;
+		private InputStreamReader in;
+		private OutputStreamWriter out;
 		volatile boolean isValidState = true;
 		
 		public JobChannel(Socket s){
 			try {
-				in =  s.getInputStream();
-				out = s.getOutputStream();
+				in =  new InputStreamReader(s.getInputStream(), "UTF-8");
+				out = new OutputStreamWriter(s.getOutputStream(), "UTF-8");
 		} catch (IOException e) {
 				e.printStackTrace();
 				isValidState = false;
 			}
 		}
-		private void toService(JobStruct js, CenterKeywordService.ServiceChannel sc) {
+		
+		private JobResultStruct toService(JobStruct js,
+				CenterKeywordService.ServiceChannel sc) {
 			//当job.id为1（代表在线识别）时，若keywords为空，就复用前面的keywords；若不为空，就用当前的keywords.
 			//当job.id为2(历史检索)时，都用当前的keywords，不论为空不为空。
 			//若keywords.length()大于20，就借用globName, 否则，一概用原始keywords.
 			String pktKw;
+			 JobResultStruct ret = new JobResultStruct();
+			 ret.id = js.id;
+			 ret.type = js.type;	
+			 ret.totalNum = 0;
+			 ret.cursor = 0;
 			if(js.id.equals("1")){
 				if( js.keywords.equals("")){
 					if(kwTmpStoredForOnline != null){
@@ -88,6 +99,7 @@ public class CenterMain implements Runnable {
 					pkt.audioFile = ae.file;
 					try {
 						sc.getRequestQueue().put(pkt);
+						ret.totalNum ++;
 					} catch (InterruptedException e) {
 						e.printStackTrace();
 					}
@@ -103,23 +115,54 @@ public class CenterMain implements Runnable {
 					centerService.addGlobalEnvi(tmpMap);
 					pktKw = globName;
 				 }
-				 
 				 for(JobStruct.AudioEntity ae: js.audioFiles){
 					 KeywordRequestPacket pkt = new KeywordRequestPacket();
 					 pkt.id = ae.id;
 					 pkt.type = KeywordRequestType.OfflineSearch;
 					 pkt.keywords = pktKw;
 					 pkt.audioFile = ae.file;
-					 pkt.loopStack.add(js.id);
+					 pkt.loopStack.push(js.id);
 					 try {
 						sc.getRequestQueue().put(pkt);
+						ret.totalNum ++;
 					} catch (InterruptedException e) {
 						e.printStackTrace();
 					}
 				 }	
 			}
+			 if(ret.totalNum > 0){
+				 return ret;
+			 }
+			 else{
+				 return null;
+			 }
 			
 		}
+		/**
+		 * 查询结果序列，若有结果就取结果包，并解析；然后， 返回。
+		 * @param jrs
+		 * @param sc
+		 * @return
+		 */
+		private JobResultStruct fromService(JobResultStruct jrs,
+				CenterKeywordService.ServiceChannel sc){
+			int curNum = 0;
+			while(curNum < jrs.totalNum || sc.getResultQueue().peek()!=null){
+				KeywordResultPacket pkt = sc.getResultQueue().poll();
+				if(pkt == null) continue;
+				//在offlineSearch下，要验证job标识，保证结果与请求的一致性。
+				if(pkt.type == KeywordRequestType.OfflineSearch 
+						&& !jrs.id.equals(pkt.loopStack.pop())){
+				}
+				else{
+					curNum ++;
+					jrs.allResults.add(new JobResultStruct.AudioResultEntity
+							(pkt.reqID, pkt.res.toString()));					
+				}
+			}
+			return jrs;
+		}
+		
 		@Override
 		public void run() {
 			// TODO Auto-generated method stub
@@ -127,8 +170,45 @@ public class CenterMain implements Runnable {
 			
 			try{
 				while(isValidState){
-					
+					// read job of string format.
+					StringBuffer sb = new StringBuffer();
+					char[] tmpBuf = new char[1024];
+					do{
+						int readNum = in.read(tmpBuf, 0, 1024);
+						sb.append(tmpBuf, 0, readNum);
+					}while(in.ready());
+					JobStruct js = JobStruct.fromJson(sb.toString());
+					if(js != null){
+						out.write("{feedback:\"ok\"}");
+						JobResultStruct jrs = toService(js, sc);
+						while(true){
+							sb.delete(0, sb.length());
+							int readNum = in.read(tmpBuf, 0, 1024);
+							sb.append(tmpBuf, 0, readNum);
+							JobIncomeMessage jim = JobIncomeMessage.fromJson(sb.toString());
+							if(jim == null) {
+								out.write("{feedback:\"Invalid Message\"}");
+								continue;
+							}
+							if(jim.isQueryProgress()){
+								fromService(jrs, sc);
+							}
+							else if(jim.isQueryResultAll()){
+								
+							}
+							else if(jim.isQueryResultPart()){
+								
+							}
+						}
+						
+					}
+					else {
+						out.write("{feedback:\"fail\"}");
+					}
 				}
+			}
+			catch(IOException e) {
+				e.printStackTrace();
 			}
 			finally{
 				sc.close();
@@ -147,6 +227,7 @@ public class CenterMain implements Runnable {
 		
 	}
 	
+	Logger myLogger = Logger.getLogger("zsr.keyword");	
 	CenterKeywordService centerService;
 	/**
 	 * @param args
@@ -167,7 +248,6 @@ public class CenterMain implements Runnable {
 }
 
 class JobStruct {
-	
 	void addTestData (){
 		id = "string";
 		type = "1 or 2 or 3";
@@ -176,11 +256,18 @@ class JobStruct {
 		audioFiles.add(new AudioEntity("1", "xxx/xxx/file1.wav") );
 		audioFiles.add(new AudioEntity("2", "xxx/xxx/file2.wav"));
 	}
-	String toJson(){
-		Gson gson = new Gson();
-		return gson.toJson(this	);
+	
+	private Gson getGsonObj(){
+		if(gson == null){
+			gson = new Gson();
+		}
+		return gson;
 	}
-	static JobStruct fromJson(String json){
+	public String toJson(){
+		Gson gson = getGsonObj();
+		return gson.toJson(this);
+	}
+	public static JobStruct fromJson(String json){
 		Gson gson = new Gson();
 		Type type =  new TypeToken<JobStruct>(){}.getType();
 		return gson.fromJson(json, type);
@@ -208,9 +295,92 @@ class JobStruct {
 	String type;
 	String keywords;
 	List<AudioEntity> audioFiles;
+	private transient Gson gson;
 }
 class JobResultStruct {
+	private static class AudioResultEntity{
+		AudioResultEntity(String id, String result){
+			this.id = id;
+			this.result = result;
+		}
+		@Override
+		public String toString(){
+			return super.toString()+" $id"+id+" $file:"+result;
+		}
+		String id;
+		String result;
+	}
+	static class StatisticStruct{
+		int totalNum;
+		int cursor;
+		int length;
+	}
+	public JobResultStruct(String id, String type, int totalNum) {
+		this.id = id;
+		this.type = type;
+		this.jss = new StatisticStruct();
+		this.jss.totalNum = totalNum;
+		this.jss.cursor = 0;
+		this.jss.length = 0;
+	}
+	public void appendResult(String id, String res){
+		allResults.add(new AudioResultEntity(id, res));
+		this.jss.length ++;
+	}
+	public StatisticStruct getStatistic(){
+		return jss;
+	}
+	public Object clone(){
+		
+	}
+	public JobResultStruct splitStruct(){
+		
+	}
 	
+	StatisticStruct jss;
+	String id;
+	String type;
+	private List<AudioResultEntity> allResults;
+}
+
+class JobIncomeMessage{
+	private Gson getGsonObj(){
+		if(gson==null){
+			gson = new Gson();
+		}
+		return gson;
+	}
+	public String toJson(){
+		Gson g = getGsonObj();
+		return g.toJson(this);
+	}
+	public static JobIncomeMessage fromJson(String str){
+		Gson g = new Gson();
+		Type type = new TypeToken<JobIncomeMessage>(){}.getType();
+		return g.fromJson(str, type);
+	}
+	
+	boolean isQueryProgress(){
+		if(name.equals("query progress")){
+			return true;
+		}
+		return false;
+	}
+	boolean isQueryResultPart(){
+		if(name.equals("query result") && value.equals("part")){
+			return true;
+		}
+		return false;
+	}
+	boolean isQueryResultAll(){
+		if(name.equals("query result") && value.equals("all")){
+			return true;
+		}
+		return false;
+	}
+	private String name;
+	private String value;
+	private transient Gson gson;
 }
 
 
