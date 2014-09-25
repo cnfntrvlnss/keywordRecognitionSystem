@@ -53,19 +53,22 @@ public class CenterMain implements Runnable {
 				isValidState = false;
 			}
 		}
-		
+		/**
+		 * 实现逻辑：
+		 * 把作业元信息存入返回对象中。
+		 * 
+		 * @param js
+		 * @param sc
+		 * @return 结果对象，后续结果的收集是通过对此结果对象的操作。
+		 */
 		private JobResultStruct toService(JobStruct js,
 				CenterKeywordService.ServiceChannel sc) {
-			//当job.id为1（代表在线识别）时，若keywords为空，就复用前面的keywords；若不为空，就用当前的keywords.
-			//当job.id为2(历史检索)时，都用当前的keywords，不论为空不为空。
+			//当job.type为1（代表在线识别）时，若keywords为空，就复用前面的keywords；若不为空，就用当前的keywords.
+			//当job.type为2(历史检索)时，都用当前的keywords，不论为空不为空。
 			//若keywords.length()大于20，就借用globName, 否则，一概用原始keywords.
 			String pktKw;
-			 JobResultStruct ret = new JobResultStruct();
-			 ret.id = js.id;
-			 ret.type = js.type;	
-			 ret.totalNum = 0;
-			 ret.cursor = 0;
-			if(js.id.equals("1")){
+			int totalNum = 0;
+			if(js.type.equals("1")){
 				if( js.keywords.equals("")){
 					if(kwTmpStoredForOnline != null){
 						pktKw = kwTmpStoredForOnline;
@@ -99,7 +102,7 @@ public class CenterMain implements Runnable {
 					pkt.audioFile = ae.file;
 					try {
 						sc.getRequestQueue().put(pkt);
-						ret.totalNum ++;
+						totalNum ++;
 					} catch (InterruptedException e) {
 						e.printStackTrace();
 					}
@@ -124,14 +127,15 @@ public class CenterMain implements Runnable {
 					 pkt.loopStack.push(js.id);
 					 try {
 						sc.getRequestQueue().put(pkt);
-						ret.totalNum ++;
+						totalNum ++;
 					} catch (InterruptedException e) {
 						e.printStackTrace();
 					}
 				 }	
 			}
-			 if(ret.totalNum > 0){
-				 return ret;
+			 if(totalNum > 0){
+				 JobResultStruct jrs = new JobResultStruct(js.id,js.type, totalNum);
+				 return jrs;
 			 }
 			 else{
 				 return null;
@@ -146,8 +150,7 @@ public class CenterMain implements Runnable {
 		 */
 		private JobResultStruct fromService(JobResultStruct jrs,
 				CenterKeywordService.ServiceChannel sc){
-			int curNum = 0;
-			while(curNum < jrs.totalNum || sc.getResultQueue().peek()!=null){
+			while(jrs.getStatistic().cursor+jrs.getStatistic().length < jrs.getStatistic().totalNum || sc.getResultQueue().peek()!=null){
 				KeywordResultPacket pkt = sc.getResultQueue().poll();
 				if(pkt == null) continue;
 				//在offlineSearch下，要验证job标识，保证结果与请求的一致性。
@@ -155,9 +158,7 @@ public class CenterMain implements Runnable {
 						&& !jrs.id.equals(pkt.loopStack.pop())){
 				}
 				else{
-					curNum ++;
-					jrs.allResults.add(new JobResultStruct.AudioResultEntity
-							(pkt.reqID, pkt.res.toString()));					
+					jrs.appendResult(pkt.reqID, pkt.res.toString());
 				}
 			}
 			return jrs;
@@ -167,7 +168,7 @@ public class CenterMain implements Runnable {
 		public void run() {
 			// TODO Auto-generated method stub
 			CenterKeywordService.ServiceChannel sc = centerService.allocateOneChannel();
-			
+			Gson gson = new Gson();
 			try{
 				while(isValidState){
 					// read job of string format.
@@ -192,6 +193,7 @@ public class CenterMain implements Runnable {
 							}
 							if(jim.isQueryProgress()){
 								fromService(jrs, sc);
+								out.write(gson.toJson(jrs.getStatistic()));
 							}
 							else if(jim.isQueryResultAll()){
 								
@@ -297,6 +299,12 @@ class JobStruct {
 	List<AudioEntity> audioFiles;
 	private transient Gson gson;
 }
+
+/**
+ * 适应通信交互过程处理逻辑的定制的收集结果的类。
+ * @author Administrator
+ *
+ */
 class JobResultStruct {
 	private static class AudioResultEntity{
 		AudioResultEntity(String id, String result){
@@ -330,16 +338,22 @@ class JobResultStruct {
 	public StatisticStruct getStatistic(){
 		return jss;
 	}
-	public Object clone(){
-		
-	}
+
 	public JobResultStruct splitStruct(){
-		
+		JobResultStruct ret = new JobResultStruct(this.id, this.type, this.jss.totalNum);
+		ret.jss.cursor = this.jss.cursor;
+		for(int i=0; i<ret.jss.length; i++){
+			this.jss.length --;
+			this.jss.cursor ++;	
+			AudioResultEntity tmp = this.allResults.remove(0);
+			ret.appendResult(tmp.id, tmp.result);
+		}
+		return ret;
 	}
 	
-	StatisticStruct jss;
-	String id;
-	String type;
+	public String id;
+	public String type;
+	private StatisticStruct jss;
 	private List<AudioResultEntity> allResults;
 }
 
