@@ -3,6 +3,8 @@ package zsr.keyword;
 import static zsr.keyword.FuncUtil.readIdxFile;
 import static zsr.keyword.FuncUtil.writeIdxFile;
 
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -10,6 +12,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Handler;
 import java.util.logging.Level;
@@ -18,6 +21,23 @@ import java.util.logging.Logger;
 public class WorkerMain implements Runnable{
 
 	private WorkerMain(){
+		Properties defualtSettings = new Properties();
+		defualtSettings.put("uid", "1");
+		defualtSettings.put("center_ip", "localhost");
+		defualtSettings.put("center_port", "8828");
+		defualtSettings.put("idxfile_path", "D:\\worker1\\idxfiles\\");
+		Properties settings = new Properties(defualtSettings);
+		try {
+			settings.load(new FileInputStream("worker.properties"));
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		iMachine = Integer.parseInt(settings.getProperty("uid"));
+		dataRoot = settings.getProperty("idxfile_path");
+		notifier = new WorkerParticipation(settings.getProperty("center_ip"),
+				Integer.parseInt(settings.getProperty("center_port")));
 		
 	}
 	public static WorkerMain getWorkerObj(){
@@ -63,8 +83,9 @@ public class WorkerMain implements Runnable{
 	 *
 	 */
 	private class WorkerParticipation implements Runnable{
-		 WorkerParticipation(){
-		
+		 WorkerParticipation(String centerIp, int centerPort){
+			 this.centerIp = centerIp;
+			 this.centerPort = centerPort;
 			connThread = new Thread(this, "worker participation");
 			connThread.start();
 		}
@@ -85,10 +106,10 @@ public class WorkerMain implements Runnable{
 					myLogger.info("have notified keyword server: "+recogServer);
 					ObjectInputStream in = new ObjectInputStream(s.getInputStream());
 					Object ret = in.readObject();
-					if(ret instanceof GlobalEnviroment){
+				/*	if(ret instanceof GlobalEnviroment){
 						GE = (GlobalEnviroment) ret;
 					}
-					else if(ret instanceof TransferedFileSpace){
+					else*/ if(ret instanceof TransferedFileSpace){
 						TransferedFileSpace tf = (TransferedFileSpace)ret;
 						myLogger.info("have received feedback: " + ret.toString());
 						if (tf.downFiles.size()>0){
@@ -139,8 +160,8 @@ public class WorkerMain implements Runnable{
 		}
 		
 		Thread connThread;
-		String centerIp = "localhost";
-		int centerPort = 8828;
+		String centerIp;// = "localhost";
+		int centerPort;// = 8828;
 	}
 
 	/**
@@ -230,14 +251,14 @@ public class WorkerMain implements Runnable{
 		Map<String, String> glEnvis;
 	}
 	
-	int iMachine = 1;
+	int iMachine;
 	int startPort = 8899;
 	Thread mainThread;
 	WorkerInfo recogServer;
-	volatile GlobalEnviroment GE;
-	String dataRoot = "D:\\keywordRecognition\\idxData\\";
+//	volatile GlobalEnviroment GE;
+	String dataRoot;
 	Logger myLogger = Logger.getLogger("zsr.keyword");
-	WorkerParticipation notifier = new WorkerParticipation();
+	WorkerParticipation notifier;//
 	
 	EngineKeywordService es = EngineKeywordService.getOnlyInstance();
 	/**

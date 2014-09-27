@@ -2,6 +2,7 @@ package zsr.keyword;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
@@ -12,7 +13,7 @@ import java.util.concurrent.LinkedBlockingQueue;
  * @author thinkit
  *
  */
-public class EngineKeywordService implements CenterKeywordService{
+public class EngineKeywordService implements CenterKeywordService, Runnable{
 	private EngineKeywordService(){
 		
 	}
@@ -23,26 +24,32 @@ public class EngineKeywordService implements CenterKeywordService{
 	}
 	@Override
 	public void addGlobalEnvi(Map<String, String> map) {
-		// TODO Auto-generated method stub
-		
+		synchronized(globalEnvis) {
+			globalEnvis.putAll(map);	
+		}
 	}
 
 	@Override
 	public void removeGlobalEnvi(Set<String> set) {
-		// TODO Auto-generated method stub
-		
+		synchronized(globalEnvis) {
+			globalEnvis.keySet().removeAll(set);	
+		}
 	}
 
 	@Override
 	public Set<String> getGlobalVariable() {
-		// TODO Auto-generated method stub
-		return null;
+		return  new HashSet<String>(globalEnvis.keySet());
 	}
 
 	@Override
-	public Map<String, String> getGlobalEnvi(Set<String> s) {
-		// TODO Auto-generated method stub
-		return null;
+	public Map<String, String> getGlobalEnvi(Set<String> varSet) {
+		Map<String, String> ret = new HashMap<String, String> ();
+		synchronized(globalEnvis){
+			for(String k : globalEnvis.keySet()) {
+				ret.put(k, globalEnvis.get(k));
+			}			
+		}
+		return ret;
 	}
 	
 	private int genUId = 0;
@@ -84,9 +91,19 @@ public class EngineKeywordService implements CenterKeywordService{
 	}
 
 	
+	Map<String, String> globalEnvis = 
+			Collections.synchronizedMap(new HashMap<String, String>());
 	
 	final Map<String, ServiceChannel> allJobs =
 			Collections.synchronizedMap(new HashMap<String, ServiceChannel>());
+	
+	//TODO 遍历allJobs，处理话单。
+	@Override
+	public void run() {
+		// TODO Auto-generated method stub
+		
+	}
+
 	/**
 	 * @param args
 	 */
@@ -94,5 +111,8 @@ public class EngineKeywordService implements CenterKeywordService{
 		// TODO Auto-generated method stub
 
 	}
+}
 
+class EngineStubb {
+	
 }

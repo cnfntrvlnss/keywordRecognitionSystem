@@ -1,5 +1,7 @@
 package zsr.keyword;
 
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -14,6 +16,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -33,12 +36,32 @@ import static zsr.keyword.FuncUtil.*;
  */
 public class WorkerManagement implements Runnable{
 	private WorkerManagement(){
+		Properties defaultSettings = new Properties();
+		defaultSettings.put("idxfile_path", "D:\\dataRoot\\idxfiles\\");
+		defaultSettings.put("socket_port", "8828");
+	/*	defaultSettings.put("ftp_url", "localhost");
+		defaultSettings.put("ftp_usr", "root");
+		defaultSettings.put("ftp_pwd", "thinkit"); */
+		Properties settings = new Properties(defaultSettings);
+		try {
+			settings.load(new FileInputStream("center.properties"));
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	/*	GE = new GlobalEnviroment(settings.getProperty("ftp_url"), settings.getProperty("ftp_usr"),
+				settings.getProperty("ftp_pwd"));
+				*/
+		dataRoot = settings.getProperty("idxfile_path");
+		centerPort = Integer.parseInt(settings.getProperty("socket_port"));
+		/*
 		myLogger.setLevel(Level.ALL);
 		myLogger.setUseParentHandlers(false);
 		Handler h= new ConsoleHandler();
 		h.setLevel(Level.ALL);
 		myLogger.addHandler(h);
-				
+		*/	
 		manaThread = new Thread(this,"worker management");
 		manaThread.start();
 	}
@@ -182,8 +205,8 @@ public class WorkerManagement implements Runnable{
 	 * 若参数中的机器信息已在列表中存在，且内容相等，就更新一下实时信息；
 	 * 若参数中的机器信息已在列表中存在，但内容不相等，就操作失败。
 	 * @param worker
-	 * @param refOut 若首次添加，返回为worker指定的全局变量信息；若非首次，就返回可能有的索引文件同步信息。
-	 * 
+	 * @param refOut 若首次添加，返回null；若非首次，就返回可能有的索引文件同步信息。
+	 * @return 参数信息丢弃，返回false. 参数信息有用，返回true;
 	 */
 	private boolean addOnWorkerList(WorkerInfo worker, Object[] refOut) {
 		synchronized(currentWorkerSpace) {
@@ -216,9 +239,9 @@ public class WorkerManagement implements Runnable{
 			}
 			
 			currentWorkerSpace.put(worker.machine, new StoredWorkerInfo(worker));
-			if(refOut != null) {
+	/*		if(refOut != null) {
 				refOut[0] = GE;
-			}
+			} */
 			return true;
 		
 		}
@@ -288,9 +311,9 @@ public class WorkerManagement implements Runnable{
 						}				
 					}
 				}
-				else if(refSend[0] instanceof GlobalEnviroment) {
+		/*		else if(refSend[0] instanceof GlobalEnviroment) {
 					out.writeObject(refSend[0]);
-				}
+				} */
 			}
 			catch(IOException e) {
 				e.printStackTrace();
@@ -388,10 +411,9 @@ public class WorkerManagement implements Runnable{
 	}
 	
 	private Thread manaThread;
-	private int centerPort = 8828;
-	//TODO ftp路径需要在中心机配置，怎么把它分配到工作机呢？
-	final GlobalEnviroment GE = new GlobalEnviroment("localhost","root","toor");
-	String dataRoot = "D:\\keywordCenter\\idxData\\";
+	private int centerPort;
+//	final GlobalEnviroment GE;// = new GlobalEnviroment("localhost","root","toor");
+	String dataRoot;
 	private final int REALLOCNUM = 5;
 	/**
 	 * 对两个Map对象的操作基本上是同步的：
@@ -520,23 +542,6 @@ class TransferedFileSpace implements Serializable {
 	}
 }
 
-class GlobalEnviroment implements Serializable {
-
-	private static final long serialVersionUID = 1L;
-	public GlobalEnviroment(String root, String usr, String pwd) {
-		this.ftpRoot = root;
-		this.ftpUsr = usr;
-		this.ftpPwd = pwd;
-	}
-	@Override
-	public String toString() {
-		String add = " ftp:"+ftpUsr+"|"+ftpPwd+"@"+ftpRoot;
-		return super.toString()+add;
-	}
-	String ftpRoot;
-	String ftpUsr;
-	String ftpPwd;
-}
 
 
 

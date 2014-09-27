@@ -1,9 +1,12 @@
 package zsr.keyword;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.io.Serializable;
 import java.lang.reflect.Type;
 import java.net.Socket;
 import java.util.HashMap;
@@ -11,6 +14,7 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
@@ -28,6 +32,27 @@ import com.google.gson.reflect.TypeToken;
  */
 public class CenterMain implements Runnable {
 
+	private CenterMain(){
+		Properties defaultSettings = new Properties();
+		defaultSettings.put("ftp_url", "localhost");
+		defaultSettings.put("ftp_usr", "root");
+		defaultSettings.put("ftp_pwd", "thinkit");
+		Properties settings = new Properties(defaultSettings);
+		try {
+			settings.load(new FileInputStream("center.properties"));
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+/*		GE = new GlobalEnviroment(settings.getProperty("ftp_url"), settings.getProperty("ftp_usr"),
+				settings.getProperty("ftp_pwd")); */
+		Map<String, String> map = new HashMap<String, String>();
+		map.put("ftp_url", settings.getProperty("ftp_url"));
+		map.put("ftp_usr", settings.getProperty("ftp_usr"));
+		map.put("ftp_pwd", settings.getProperty("ftp_pwd"));
+		centerService.addGlobalEnvi(map);
+	}
 	@Override
 	public void run() {
 		// TODO Auto-generated method stub
@@ -54,8 +79,8 @@ public class CenterMain implements Runnable {
 			}
 		}
 		/**
-		 * 实现逻辑：
 		 * 把作业元信息存入返回对象中。
+		 * 抽出冗余大变量，放到globEnvis中，组装出reqPkt,发送到channel中。
 		 * 
 		 * @param js
 		 * @param sc
@@ -182,7 +207,7 @@ public class CenterMain implements Runnable {
 					if(js != null){
 						out.write("{feedback:\"ok\"}");
 						JobResultStruct jrs = toService(js, sc);
-						while(true){
+						while(isValidState){
 							sb.delete(0, sb.length());
 							int readNum = in.read(tmpBuf, 0, 1024);
 							sb.append(tmpBuf, 0, readNum);
@@ -196,10 +221,65 @@ public class CenterMain implements Runnable {
 								out.write(gson.toJson(jrs.getStatistic()));
 							}
 							else if(jim.isQueryResultAll()){
-								
+								/**
+								 * 若10分钟之内没有更新结果，就超时退出。
+								 */
+								int clen = jrs.getStatistic().length;
+								int llen = clen;
+								int circleSecs = 5;
+								int accuSecs = 0;
+								try{
+									while(jrs.getStatistic().cursor+jrs.getStatistic().length<
+										jrs.getStatistic().totalNum && (llen != clen || accuSecs <10*60)) {
+									fromService(jrs, sc);
+									if(clen != jrs.getStatistic().length){
+										accuSecs = 0;
+										llen = clen;
+										clen = jrs.getStatistic().length;
+									}
+									else {
+										accuSecs +=circleSecs;	
+									}
+									Thread.sleep(circleSecs * 1000);
+									}
+								}
+								catch(InterruptedException e) {
+									e.printStackTrace();
+									isValidState = false;
+								}
+								finally{
+									out.write(gson.toJson(jrs));
+								}
 							}
 							else if(jim.isQueryResultPart()){
+								/**
+								 * 若10分钟没有更新结果，就超时退出。
+								 */
+								int clen = jrs.getStatistic().length;
+								int llen = clen;
+								int circleSecs = 5;
+								int accuSecs = 0;
+								try{
+									while(jrs.getStatistic().cursor+jrs.getStatistic().length<
+											jrs.getStatistic().totalNum && (llen != clen || accuSecs <10*60)) {
+										fromService(jrs, sc);
+										if(clen != jrs.getStatistic().length){
+											break;
+										}
+										else {
+											accuSecs +=circleSecs;	
+										}
+										Thread.sleep(circleSecs * 1000);
+									}
 								
+								}
+								catch(InterruptedException e) {
+									e.printStackTrace();
+									isValidState = false;
+								}
+								finally {
+									out.write(gson.toJson(jrs.splitStruct()));
+								}
 							}
 						}
 						
@@ -212,7 +292,9 @@ public class CenterMain implements Runnable {
 			catch(IOException e) {
 				e.printStackTrace();
 			}
+			
 			finally{
+				//释放2类资源，[重要]
 				sc.close();
 				Set<String> tmpSet = new HashSet<String>();
 				tmpSet.add(globName);
@@ -230,7 +312,8 @@ public class CenterMain implements Runnable {
 	}
 	
 	Logger myLogger = Logger.getLogger("zsr.keyword");	
-	CenterKeywordService centerService;
+	CenterKeywordService centerService = EngineKeywordService.getOnlyInstance();
+	//GlobalEnviroment GE;//
 	/**
 	 * @param args
 	 */
@@ -396,7 +479,25 @@ class JobIncomeMessage{
 	private String value;
 	private transient Gson gson;
 }
+/*
+class GlobalEnviroment implements Serializable {
 
+	private static final long serialVersionUID = 1L;
+	public GlobalEnviroment(String root, String usr, String pwd) {
+		this.ftpRoot = root;
+		this.ftpUsr = usr;
+		this.ftpPwd = pwd;
+	}
+	@Override
+	public String toString() {
+		String add = " ftp:"+ftpUsr+"|"+ftpPwd+"@"+ftpRoot;
+		return super.toString()+add;
+	}
+	String ftpRoot;
+	String ftpUsr;
+	String ftpPwd;
+}
+*/
 
 
 
