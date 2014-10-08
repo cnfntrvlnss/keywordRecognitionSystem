@@ -20,12 +20,8 @@ public class KeywordResultPacket {
 	KeywordResultType res;
 	public String comment;
 	
-	// 用这三个字段在一个中心机--工作机中传递索引文件。
-	public byte[] idxData;
-	public String workerID;
-	public String idxFilePath;
 }
 
 enum KeywordResultType{
-	success, fileMissError, InternalError, recognitionError
+	success, fileUnavailableError, InternalError, recognitionError
 }

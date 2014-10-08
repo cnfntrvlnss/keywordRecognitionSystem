@@ -17,7 +17,14 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
+/**
+ * 提供系统内部的kewordService通讯的服务端。
+ * 作为一个节点的主控程序
+ * 连接workerManageService通信的服务端。
+ * 
+ * @author Administrator
+ *
+ */
 public class WorkerMain implements Runnable{
 
 	private WorkerMain(){
@@ -25,7 +32,6 @@ public class WorkerMain implements Runnable{
 		defualtSettings.put("uid", "1");
 		defualtSettings.put("center_ip", "localhost");
 		defualtSettings.put("center_port", "8828");
-		defualtSettings.put("idxfile_path", "D:\\worker1\\idxfiles\\");
 		Properties settings = new Properties(defualtSettings);
 		try {
 			settings.load(new FileInputStream("worker.properties"));
@@ -35,7 +41,6 @@ public class WorkerMain implements Runnable{
 			e.printStackTrace();
 		}
 		iMachine = Integer.parseInt(settings.getProperty("uid"));
-		dataRoot = settings.getProperty("idxfile_path");
 		notifier = new WorkerParticipation(settings.getProperty("center_ip"),
 				Integer.parseInt(settings.getProperty("center_port")));
 		
@@ -47,7 +52,7 @@ public class WorkerMain implements Runnable{
 	private static WorkerMain onlyOrNot; 
 	
 	/**
-	 * 监听连接，启动识别任务处理线程。
+	 * 监听连接线程。并在此线程里面，启动通信线程。
 	 */
 	@Override
 	public void run() {
@@ -109,7 +114,7 @@ public class WorkerMain implements Runnable{
 				/*	if(ret instanceof GlobalEnviroment){
 						GE = (GlobalEnviroment) ret;
 					}
-					else*/ if(ret instanceof TransferedFileSpace){
+					else if(ret instanceof TransferedFileSpace){
 						TransferedFileSpace tf = (TransferedFileSpace)ret;
 						myLogger.info("have received feedback: " + ret.toString());
 						if (tf.downFiles.size()>0){
@@ -131,7 +136,7 @@ public class WorkerMain implements Runnable{
 					else {
 						//ignore this branch.
 					}
-					
+					*/
 				}
 				catch (IOException e) {
 					e.printStackTrace();
@@ -165,7 +170,7 @@ public class WorkerMain implements Runnable{
 	}
 
 	/**
-	 * 
+	 * 一路workerService的通讯线程。在里面：调用keywordService接口函数完成通信逻辑。
 	 * @author thinkit
 	 *
 	 */
@@ -256,7 +261,6 @@ public class WorkerMain implements Runnable{
 	Thread mainThread;
 	WorkerInfo recogServer;
 //	volatile GlobalEnviroment GE;
-	String dataRoot;
 	Logger myLogger = Logger.getLogger("zsr.keyword");
 	WorkerParticipation notifier;//
 	

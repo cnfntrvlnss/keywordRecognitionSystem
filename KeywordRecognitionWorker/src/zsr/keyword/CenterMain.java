@@ -53,6 +53,7 @@ public class CenterMain implements Runnable {
 		map.put("ftp_pwd", settings.getProperty("ftp_pwd"));
 		centerService.addGlobalEnvi(map);
 	}
+	
 	@Override
 	public void run() {
 		// TODO Auto-generated method stub

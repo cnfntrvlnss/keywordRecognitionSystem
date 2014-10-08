@@ -84,7 +84,7 @@ public class WorkerManagement implements Runnable{
 	 * @param refBQue
 	 * @return
 	 */
-	public WorkerInfo allocateOne(int imach, BlockingQueue<IdxFileSynch> [] refBQue) {
+	public WorkerInfo allocateOne(int imach /*, BlockingQueue<IdxFileSynch> [] refBQue*/) {
 		WorkerInfo ret = null;
 		synchronized(currentWorkerSpace) {
 			if(!currentWorkerSpace.containsKey(imach) || currentWorkerSpace.get(imach) == null) {
@@ -95,11 +95,13 @@ public class WorkerManagement implements Runnable{
 				removeOnWorkerList(currentWorkerSpace.get(imach).one);
 				return null;
 			}
+			/*
 			if (refBQue != null) {
 				ret = currentWorkerSpace.get(imach).one;
 				refBQue[0] = idxFileSpace.get(ret.strIp).taskQueue;
 				currentWorkerSpace.get(imach).reallocTime --;
 			}
+			*/
 		}
 		return ret;
 	}
@@ -154,6 +156,7 @@ public class WorkerManagement implements Runnable{
 			e.printStackTrace();
 		}
 	}
+	/*
 	private TransferedFileSpace getSynchSpace(String strIp) {
 		//附加逻辑: 把taskQueue中信息转移到synchSpace中。
 		//遍历idxFileSpace要枷锁
@@ -200,15 +203,18 @@ public class WorkerManagement implements Runnable{
 		}
 		return 	ret;
 	}
+	*/
+	
 	/**
 	 * 若参数中的机器信息不在列表中，就增加一项；
 	 * 若参数中的机器信息已在列表中存在，且内容相等，就更新一下实时信息；
 	 * 若参数中的机器信息已在列表中存在，但内容不相等，就操作失败。
+	 * **即，只有等到机器信息自行失败删除后，才能添加新的有变动的机器信息。
 	 * @param worker
 	 * @param refOut 若首次添加，返回null；若非首次，就返回可能有的索引文件同步信息。
 	 * @return 参数信息丢弃，返回false. 参数信息有用，返回true;
 	 */
-	private boolean addOnWorkerList(WorkerInfo worker, Object[] refOut) {
+	private boolean addOnWorkerList(WorkerInfo worker /*, Object[] refOut*/) {
 		synchronized(currentWorkerSpace) {
 			int iMach = worker.machine;
 			if(currentWorkerSpace.containsKey(iMach) && currentWorkerSpace.get(iMach)
@@ -217,9 +223,11 @@ public class WorkerManagement implements Runnable{
 					//update real time Info.
 					currentWorkerSpace.get(iMach).lastActiveTime = new Date();
 					currentWorkerSpace.get(iMach).reallocTime  = REALLOCNUM;
+					/*
 					if (refOut != null) {					
 						refOut[0] = getSynchSpace(worker.strIp);
 					}
+					*/
 					return true;
 				}
 				else {
@@ -227,7 +235,7 @@ public class WorkerManagement implements Runnable{
 					return false;
 				}
 			}
-			boolean hasAddr = false;
+/*			boolean hasAddr = false;
 			for(Integer mach : currentWorkerSpace.keySet()) {
 				if(worker.strIp.equals(currentWorkerSpace.get(mach).one.strIp)) {
 					hasAddr = true;
@@ -255,16 +263,16 @@ public class WorkerManagement implements Runnable{
 	private boolean removeOnWorkerList(WorkerInfo worker) {
 		synchronized(currentWorkerSpace) {
 			currentWorkerSpace.remove(worker.machine);
-			boolean hasAddr = false;
+//			boolean hasAddr = false;
 			for (Integer i: currentWorkerSpace.keySet()) {
 				if(worker.strIp.equals(currentWorkerSpace.get(i).one.strIp)) {
-					hasAddr = true;
+//					hasAddr = true;
 					break;
 				}
 			}
-			if(hasAddr == false) {
-				idxFileSpace.remove(worker.strIp);
-			}
+//			if(hasAddr == false) {
+//				idxFileSpace.remove(worker.strIp);
+//			}
 		}
 		
 		return false;
@@ -293,10 +301,11 @@ public class WorkerManagement implements Runnable{
 				WorkerInfo one = (WorkerInfo)in.readObject();
 				myLogger.info("received worker info: "+ one);
 				Object[] refSend = new Object[1];
-				addOnWorkerList(one, refSend);
+				addOnWorkerList(one /*, refSend*/);
 				if(refSend[0] ==null){
 					out.writeObject(new Object());
 				}
+				/*
 				else if(refSend[0] instanceof TransferedFileSpace){
 					TransferedFileSpace send = (TransferedFileSpace) refSend[0];
 					myLogger.info("sending to worker: "+ send.toString());
@@ -311,7 +320,7 @@ public class WorkerManagement implements Runnable{
 						}				
 					}
 				}
-		/*		else if(refSend[0] instanceof GlobalEnviroment) {
+			else if(refSend[0] instanceof GlobalEnviroment) {
 					out.writeObject(refSend[0]);
 				} */
 			}
@@ -393,11 +402,12 @@ public class WorkerManagement implements Runnable{
 	//	TransferedFileSpace needSynchroTasks;
 	}
 	/**
-	 * hasOrNot为0，表示出来我没有此文件；hasOrNot为1，表示我有次文件。
+	 * hasOrNot为0，表示我没有此文件；hasOrNot为1，表示我有此文件。
 	 * @author Administrator
 	 *
 	 */
-	static class IdxFileSynch{
+	
+/*	static class IdxFileSynch{
 		public IdxFileSynch(boolean hasOrNot, String idxFile) {
 			this.hasOrNot = hasOrNot;
 			this.idxFile = idxFile;
@@ -409,7 +419,7 @@ public class WorkerManagement implements Runnable{
 		final BlockingQueue<IdxFileSynch> taskQueue = new LinkedBlockingQueue<IdxFileSynch>();
 		final TransferedFileSpace synchSpace = new TransferedFileSpace();
 	}
-	
+*/	
 	private Thread manaThread;
 	private int centerPort;
 //	final GlobalEnviroment GE;// = new GlobalEnviroment("localhost","root","toor");
@@ -424,8 +434,8 @@ public class WorkerManagement implements Runnable{
 	 */
 	private Map<Integer, StoredWorkerInfo> currentWorkerSpace = 
 			Collections.synchronizedMap(new HashMap<Integer, StoredWorkerInfo>());
-	private Map<String, AddressRelatedSpace> idxFileSpace = 
-			Collections.synchronizedMap(new HashMap<String, AddressRelatedSpace>());
+//	private Map<String, AddressRelatedSpace> idxFileSpace = 
+//			Collections.synchronizedMap(new HashMap<String, AddressRelatedSpace>());
 //	Map<String, List<TransferedFile> > synchroTasks; 
 	Logger myLogger = Logger.getLogger("zsr.keyword");
 	
@@ -441,7 +451,11 @@ public class WorkerManagement implements Runnable{
 	}
 }
 
-//server related info of worker.。
+/**
+ * 
+ * @author Administrator
+ *
+ */
 class WorkerInfo implements Serializable {
 	public WorkerInfo(){
 		
@@ -487,6 +501,7 @@ class WorkerInfo implements Serializable {
 /**
  * used for synchronization of distributed files。
  */
+/*
 class TransferedFileSpace implements Serializable {
 	public TransferedFileSpace() {
 		
@@ -530,9 +545,6 @@ class TransferedFileSpace implements Serializable {
 		}
 		return ret;
 	}
-	/**
-	 * 
-	 */
 	private static final long serialVersionUID = 1L;
 	Map<String, byte[]> downFiles = new HashMap<String, byte[]>();
 	Map<String, byte[]> upFiles = new HashMap<String, byte[]>();
@@ -541,6 +553,7 @@ class TransferedFileSpace implements Serializable {
 		
 	}
 }
+*/
 
 
 

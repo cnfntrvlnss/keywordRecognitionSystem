@@ -148,8 +148,8 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 				}
 			}
 			while(liConns.size()<connNumPerWorker) {
-				BlockingQueue<WorkerManagement.IdxFileSynch>[] arrIdxQue = new BlockingQueue[1];
-				WorkerInfo w = workerWare.allocateOne(m, arrIdxQue);
+		//		BlockingQueue<WorkerManagement.IdxFileSynch>[] arrIdxQue = new BlockingQueue[1];
+				WorkerInfo w = workerWare.allocateOne(m); //, arrIdxQue
 				if(w == null){
 					//一次分配失败，就说明以前分配的同一机器下的workerInfo失效了。
 					for(DispatchTaskChannel t: liConns){
@@ -162,7 +162,7 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 				Socket s = null;
 				try{
 					s = new Socket(w.strIp, w.port);
-					DispatchTaskChannel t = new DispatchTaskChannel(s, arrIdxQue[0]);
+					DispatchTaskChannel t = new DispatchTaskChannel(s);//, arrIdxQue[0]
 					new Thread(t, "DispatchTaskChannel thread").start();
 					liConns.add(t);
 				}
@@ -247,12 +247,12 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 	//	Socket socket;
 		ObjectOutputStream out;
 		ObjectInputStream in;
-		BlockingQueue<WorkerManagement.IdxFileSynch> idxFileQueue;
+	//	BlockingQueue<WorkerManagement.IdxFileSynch> idxFileQueue;
 		public volatile int curGEnviVersion = 0; //definitely can be zero.
 		volatile boolean isValidState = true; //currently, ignoring the cause for zero setting.
-		public DispatchTaskChannel(Socket s, BlockingQueue<WorkerManagement.IdxFileSynch> idxQue) {
+		public DispatchTaskChannel(Socket s/*, BlockingQueue<WorkerManagement.IdxFileSynch> idxQue*/) {
 			try{
-				this.idxFileQueue = idxQue;
+		//		this.idxFileQueue = idxQue;
 				// send globalEnvis.
 				out = new ObjectOutputStream(s.getOutputStream());
 				Integer[] refVer = new Integer[1];
@@ -280,52 +280,19 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 				e.printStackTrace();
 			}
 		}
-		/**
-		 * 当前，做最简化处理：onlineSearch是建索引，搜索关键词两个完整的过程；
-		 * offlineSearch只是搜索关键词的过程，若由于没有索引文件而失败就发起建索引过程。
-		 * @param pag
-		 * @return
-		 */
-		KeywordRequestPacket wrapWorkerPacket(KeywordRequestPacket pag) {
-			
-			return pag;	
-		}
-		/**
-		 * 暂且实现为TaskType为online时，去除包中的索引文件，并添加同步命令；若为offline, 就直接返回。
-		 * @param pag
-		 * @return
-		 */
-		KeywordResultPacket unwrapWorkerPacket(KeywordResultPacket pag) throws
-		InterruptedException{
-			if(pag.type == KeywordRequestType.OnlineSearch){
-				if(pag.idxFilePath!= null && pag.idxData!=null) {
-					writeIdxFile(workerWare.dataRoot+pag.idxFilePath, pag.idxData);
-				}
-				idxFileQueue.put(new WorkerManagement.IdxFileSynch(true, pag.idxFilePath));
-			}
-			else if(pag.type == KeywordRequestType.OfflineSearch) {
-				if(pag.res == KeywordResultType.fileMissError) {
-					if(pag.idxFilePath != null && new File(workerWare.dataRoot+pag.idxFilePath).exists()){
-						idxFileQueue.put(new WorkerManagement.IdxFileSynch(false, pag.idxFilePath));
-					}
-				}
-			}
-			
-			return new KeywordResultPacket(pag);			
-		}
+		
 		@Override
 		public void run() {
-			// TODO Auto-generated method stub
 			try{
 				while(isValidState) {
 					if(envisUpdateRecords.get(curGEnviVersion+1) != null){
 						out.writeObject(envisUpdateRecords.get(curGEnviVersion+1));
 						curGEnviVersion ++;
 					}
-					KeywordRequestPacket ret = reqQueue.take();
-					out.writeObject(wrapWorkerPacket(ret));
-					KeywordResultPacket rec = (KeywordResultPacket)in.readObject();
-					resQueue.put(unwrapWorkerPacket(rec));
+					//发送一条请求包，等待相应的结果；然后，下一轮的发送---回收。
+					//TODO 需要添加错误处理逻辑，比如收到的结果不是有效地结果包，等待超时。
+					out.writeObject(reqQueue.take());
+					resQueue.put((KeywordResultPacket)in.readObject());
 				}
 			}
 			catch(IOException e) {
@@ -358,7 +325,7 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 	int globalEnvisVer = 0;
 	Map<Integer, Map<String, String>> envisUpdateRecords
 	= Collections.synchronizedMap(new HashMap<Integer, Map<String, String>>());
-	
+	//allJobs中各队列汇集成单一的队列reqQueue和resQueue，简化后面的操作。
 	final Map<String, ServiceChannel> allJobs = 
 			Collections.synchronizedMap(new HashMap<String, ServiceChannel>());
 	BlockingQueue<KeywordRequestPacket> reqQueue = new LinkedBlockingQueue<KeywordRequestPacket>(200000);
@@ -369,7 +336,6 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 }
 
 class MySocketInteractException extends IOException {
-
 	/**
 	 * 
 	 */
