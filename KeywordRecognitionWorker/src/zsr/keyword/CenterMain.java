@@ -24,8 +24,7 @@ import com.google.gson.reflect.TypeToken;
 /**
  * 关键词识别系统对外提供的接口，提供一个socket服务端口，并处理客户端连接，处理请求作业。
  * 作业及作业结果的格式是JSON。
- * 要处理的作业的类型：在线识别与建立历史，历史检索，删除历史。
- * ---删除历史的功能是后考虑进去的，留在前两个实现之后。
+ * 要处理的作业的类型：在线识别，历史检索.
  * 
  * @author thinkit
  *
@@ -34,9 +33,7 @@ public class CenterMain implements Runnable {
 
 	private CenterMain(){
 		Properties defaultSettings = new Properties();
-		defaultSettings.put("ftp_url", "localhost");
-		defaultSettings.put("ftp_usr", "root");
-		defaultSettings.put("ftp_pwd", "thinkit");
+		defaultSettings.put("audio_url", "localhost");
 		Properties settings = new Properties(defaultSettings);
 		try {
 			settings.load(new FileInputStream("center.properties"));
@@ -48,9 +45,7 @@ public class CenterMain implements Runnable {
 /*		GE = new GlobalEnviroment(settings.getProperty("ftp_url"), settings.getProperty("ftp_usr"),
 				settings.getProperty("ftp_pwd")); */
 		Map<String, String> map = new HashMap<String, String>();
-		map.put("ftp_url", settings.getProperty("ftp_url"));
-		map.put("ftp_usr", settings.getProperty("ftp_usr"));
-		map.put("ftp_pwd", settings.getProperty("ftp_pwd"));
+		map.put("audio_url", settings.getProperty("audio_url"));
 		centerService.addGlobalEnvi(map);
 	}
 	
@@ -59,13 +54,28 @@ public class CenterMain implements Runnable {
 		// TODO Auto-generated method stub
 		
 	}
-
+	/**
+	 * 一线流程，作业处理的全部逻辑。通过socket输入输出。
+	 * 数据格式：参照JobStruct, JobResultStruct, 
+	 * 另外的几个信令：JobIncomeMessage， {feedback: ok or fail or ...}
+	 * 交互协议：
+	 * 1. 发送一个JobStruct的json字符串，若回答{feedback: ok}， 继续。
+	 * 2. 发送JobIncomeMessage的一个json字符串，根据其内容，返回统计信息，部分结果，全部结果等。
+	 * 3. 全部结果的返回也许不完整，有可能通过超时强制作业完成的。
+	 * 期待一个JobResultStruct的json字符串。
+	 * 两个相邻JobStruct的Id不能相等。
+	 * 同一线上可处理在线识别和历史检索两种作业，当前的关键词列表没有指定，就复用前面的关键词列表。
+	 * 
+	 * @author Administrator
+	 *
+	 */
 	private class JobChannel implements Runnable{
 		
-		String globName = "$keywords"+ Thread.currentThread().getId();
-		boolean hasUsedGlobName = false;
-		String kwTmpStoredForOnline;//上一个Job用到的keywords变量。若为null，
-		                           //相应的keywords变量就用的是globEnvis中了。
+		String globNameOnline = "$keywords1"+ Thread.currentThread().getId();
+		String globNameOffline = "$Keywords2"+ Thread.currentThread().getId();
+		
+		String kwTmpStoredOnline = "";
+		String kwTmpStoredOffline = "";
 		private InputStreamReader in;
 		private OutputStreamWriter out;
 		volatile boolean isValidState = true;
@@ -89,37 +99,31 @@ public class CenterMain implements Runnable {
 		 */
 		private JobResultStruct toService(JobStruct js,
 				CenterKeywordService.ServiceChannel sc) {
-			//当job.type为1（代表在线识别）时，若keywords为空，就复用前面的keywords；若不为空，就用当前的keywords.
-			//当job.type为2(历史检索)时，都用当前的keywords，不论为空不为空。
-			//若keywords.length()大于20，就借用globName, 否则，一概用原始keywords.
 			String pktKw;
-			int totalNum = 0;
+			int totalNum = 0; //返回对象要保存的信息。
+
 			if(js.type.equals("1")){
-				if( js.keywords.equals("")){
-					if(kwTmpStoredForOnline != null){
-						pktKw = kwTmpStoredForOnline;
+				//若keywords为空，就复用之前的keywords；若不为空，就用当前的keywords.
+				//若keywords.length()大于20，就借用globName..., 否则，一概用原始keywords.				
+				if(js.keywords.equals("")){
+					if(kwTmpStoredOnline.length()<=20){
+						pktKw = kwTmpStoredOnline;
 					}
-					else if(hasUsedGlobName == false){
-						kwTmpStoredForOnline = "";
-						pktKw = kwTmpStoredForOnline;
+					else{
+						pktKw = globNameOnline;
 					}
-					else {
-						pktKw = globName;
-					}
-					
 				}
-				else if( js.keywords.length()<=20){
-					kwTmpStoredForOnline = js.keywords;
-					pktKw = kwTmpStoredForOnline;
+				else if(js.keywords.length()<20){
+					kwTmpStoredOnline = js.keywords;
+					pktKw = kwTmpStoredOnline;
 				}
 				else {
-					kwTmpStoredForOnline = null;
+					kwTmpStoredOnline = js.keywords;
+					pktKw = globNameOnline;
 					Map<String, String> tmpMap = new HashMap<String, String> ();
-					tmpMap.put(globName, js.keywords);
+					tmpMap.put(globNameOnline, js.keywords);
 					centerService.addGlobalEnvi(tmpMap);
-					pktKw = globName;
-				}
-				
+				}				
 				for(JobStruct.AudioEntity ae: js.audioFiles){
 					KeywordRequestPacket pkt = new KeywordRequestPacket();
 					pkt.id = ae.id;
@@ -135,15 +139,29 @@ public class CenterMain implements Runnable {
 				}
 			}
 			else {
-				 if(js.keywords.length()<=20){
-					pktKw= js.keywords;
-				 }
-				 else {
+				if(js.keywords.equals("") && kwTmpStoredOffline.equals("")){
+					return null;
+				}
+				if(js.keywords.equals("")){
+					if(kwTmpStoredOffline.length()<=20){
+						pktKw = kwTmpStoredOffline;
+					}
+					else{
+						pktKw = globNameOffline;
+					}
+				}
+				else if(js.keywords.length()<20){
+					kwTmpStoredOffline = js.keywords;
+					pktKw = kwTmpStoredOffline;
+				}
+				else {
+					kwTmpStoredOffline = js.keywords;
+					pktKw = globNameOffline;
 					Map<String, String> tmpMap = new HashMap<String, String> ();
-					tmpMap.put(globName, js.keywords);
+					tmpMap.put(globNameOffline, js.keywords);
 					centerService.addGlobalEnvi(tmpMap);
-					pktKw = globName;
-				 }
+				}				
+				
 				 for(JobStruct.AudioEntity ae: js.audioFiles){
 					 KeywordRequestPacket pkt = new KeywordRequestPacket();
 					 pkt.id = ae.id;
@@ -192,7 +210,7 @@ public class CenterMain implements Runnable {
 		
 		@Override
 		public void run() {
-			// TODO Auto-generated method stub
+			// TODO 流程还不完整。
 			CenterKeywordService.ServiceChannel sc = centerService.allocateOneChannel();
 			Gson gson = new Gson();
 			try{
@@ -206,8 +224,13 @@ public class CenterMain implements Runnable {
 					}while(in.ready());
 					JobStruct js = JobStruct.fromJson(sb.toString());
 					if(js != null){
-						out.write("{feedback:\"ok\"}");
 						JobResultStruct jrs = toService(js, sc);
+						if(jrs == null){
+							//TODO 记录log, 发送fail 
+							out.write("{feeback:\"fail\"}");
+							continue;
+						}
+						out.write("{feedback:\"ok\"}");
 						while(isValidState){
 							sb.delete(0, sb.length());
 							int readNum = in.read(tmpBuf, 0, 1024);
@@ -298,7 +321,8 @@ public class CenterMain implements Runnable {
 				//释放2类资源，[重要]
 				sc.close();
 				Set<String> tmpSet = new HashSet<String>();
-				tmpSet.add(globName);
+				tmpSet.add(globNameOnline);
+				tmpSet.add(globNameOffline);
 				centerService.removeGlobalEnvi(tmpSet);
 					try {
 						if(in != null) in.close();
