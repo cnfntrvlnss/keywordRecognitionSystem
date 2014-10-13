@@ -196,7 +196,6 @@ public class CenterMain implements Runnable {
 				CenterKeywordService.ServiceChannel sc){
 			while(jrs.getStatistic().cursor+jrs.getStatistic().length < jrs.getStatistic().totalNum || sc.getResultQueue().peek()!=null){
 				KeywordResultPacket pkt = sc.getResultQueue().poll();
-				if(pkt == null) continue;
 				//在offlineSearch下，要验证job标识，保证结果与请求的一致性。
 				if(pkt.type == KeywordRequestType.OfflineSearch 
 						&& !jrs.id.equals(pkt.loopStack.pop())){
@@ -210,7 +209,6 @@ public class CenterMain implements Runnable {
 		
 		@Override
 		public void run() {
-			// TODO 流程还不完整。
 			CenterKeywordService.ServiceChannel sc = centerService.allocateOneChannel();
 			Gson gson = new Gson();
 			try{
@@ -218,6 +216,7 @@ public class CenterMain implements Runnable {
 					// read job of string format.
 					StringBuffer sb = new StringBuffer();
 					char[] tmpBuf = new char[1024];
+					//把对方一次发的数据都收集到。
 					do{
 						int readNum = in.read(tmpBuf, 0, 1024);
 						sb.append(tmpBuf, 0, readNum);
@@ -244,7 +243,7 @@ public class CenterMain implements Runnable {
 								fromService(jrs, sc);
 								out.write(gson.toJson(jrs.getStatistic()));
 							}
-							else if(jim.isQueryResultAll()){
+							else if(jim.isRetrieveResultAll()){
 								/**
 								 * 若10分钟之内没有更新结果，就超时退出。
 								 */
@@ -266,6 +265,10 @@ public class CenterMain implements Runnable {
 									}
 									Thread.sleep(circleSecs * 1000);
 									}
+									//虽然没有收集全，但不会再受到新的结果包了，就强制设定作业完成。
+									if(accuSecs >= 10*60){
+										jrs.finished = true;
+									}
 								}
 								catch(InterruptedException e) {
 									e.printStackTrace();
@@ -273,12 +276,11 @@ public class CenterMain implements Runnable {
 								}
 								finally{
 									out.write(gson.toJson(jrs));
+									
 								}
 							}
-							else if(jim.isQueryResultPart()){
-								/**
-								 * 若10分钟没有更新结果，就超时退出。
-								 */
+							else if(jim.isRetrieveResultNew()){
+								//等待收集到一次结果，就退出。
 								int clen = jrs.getStatistic().length;
 								int llen = clen;
 								int circleSecs = 5;
@@ -295,7 +297,10 @@ public class CenterMain implements Runnable {
 										}
 										Thread.sleep(circleSecs * 1000);
 									}
-								
+									//虽然没有收集全，但不会再受到新的结果包了，就强制设定作业完成。
+									if(accuSecs >= 10*60){
+										jrs.finished = true;
+									}
 								}
 								catch(InterruptedException e) {
 									e.printStackTrace();
@@ -305,13 +310,21 @@ public class CenterMain implements Runnable {
 									out.write(gson.toJson(jrs.splitStruct()));
 								}
 							}
-						}
-						
+							else if(jim.isRetrieveResultPart()){
+								fromService(jrs, sc);
+								out.write(gson.toJson(jrs.splitStruct()));
+							}
+							//当前作业的循环处理的退出机制。
+							if(jrs.finished == true){
+								break;
+							}							
+						}//while---当前作业的循环。
+
 					}
 					else {
 						out.write("{feedback:\"fail\"}");
 					}
-				}
+				}//while---当前channel的循环，等待接收下次作业。
 			}
 			catch(IOException e) {
 				e.printStackTrace();
@@ -324,19 +337,20 @@ public class CenterMain implements Runnable {
 				tmpSet.add(globNameOnline);
 				tmpSet.add(globNameOffline);
 				centerService.removeGlobalEnvi(tmpSet);
-					try {
-						if(in != null) in.close();
-						if(out != null) out.close();
-					} catch (IOException e) {
-						e.printStackTrace();
-					}
+				try {
+					if(in != null) in.close();
+					if(out != null) out.close();
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
 				
 			}
 		}
 		
 	}
 	
-	Logger myLogger = Logger.getLogger("zsr.keyword");	
+	Logger myLogger = Logger.getLogger("zsr.keyword");
+	//TODO 获取服务对象的方式需要优化。
 	CenterKeywordService centerService = EngineKeywordService.getOnlyInstance();
 	//GlobalEnviroment GE;//
 	/**
@@ -438,10 +452,14 @@ class JobResultStruct {
 		this.jss.totalNum = totalNum;
 		this.jss.cursor = 0;
 		this.jss.length = 0;
+		this.finished = false;
 	}
 	public void appendResult(String id, String res){
 		allResults.add(new AudioResultEntity(id, res));
 		this.jss.length ++;
+		if(this.jss.length + this.jss.cursor == this.jss.totalNum){
+			this.finished = true;
+		}
 	}
 	public StatisticStruct getStatistic(){
 		return jss;
@@ -450,6 +468,8 @@ class JobResultStruct {
 	public JobResultStruct splitStruct(){
 		JobResultStruct ret = new JobResultStruct(this.id, this.type, this.jss.totalNum);
 		ret.jss.cursor = this.jss.cursor;
+		ret.jss.length = this.jss.length;
+		ret.finished = this.finished;
 		for(int i=0; i<ret.jss.length; i++){
 			this.jss.length --;
 			this.jss.cursor ++;	
@@ -462,6 +482,7 @@ class JobResultStruct {
 	public String id;
 	public String type;
 	private StatisticStruct jss;
+	public boolean finished;
 	private List<AudioResultEntity> allResults;
 }
 
@@ -488,14 +509,20 @@ class JobIncomeMessage{
 		}
 		return false;
 	}
-	boolean isQueryResultPart(){
-		if(name.equals("query result") && value.equals("part")){
+	boolean isRetrieveResultNew(){
+		if(name.equals("retrieve result") && value.equals("new")){
 			return true;
 		}
 		return false;
 	}
-	boolean isQueryResultAll(){
-		if(name.equals("query result") && value.equals("all")){
+	boolean isRetrieveResultAll(){
+		if(name.equals("retrieve result") && value.equals("all")){
+			return true;
+		}
+		return false;
+	}
+	boolean isRetrieveResultPart(){
+		if(name.equals("retrieve result") && value.equals("part")){
 			return true;
 		}
 		return false;

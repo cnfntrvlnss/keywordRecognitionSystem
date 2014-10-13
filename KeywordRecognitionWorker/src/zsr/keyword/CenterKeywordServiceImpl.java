@@ -331,6 +331,7 @@ public class CenterKeywordServiceImpl implements CenterKeywordService, Runnable{
 	BlockingQueue<KeywordRequestPacket> reqQueue = new LinkedBlockingQueue<KeywordRequestPacket>(200000);
 	BlockingQueue<KeywordResultPacket> resQueue = new LinkedBlockingQueue<KeywordResultPacket>(200000);
 	Logger myLogger = Logger.getLogger("zsr.keyword");
+	
 	private WorkerManagement workerWare = WorkerManagement.onlyOne;
 
 }
