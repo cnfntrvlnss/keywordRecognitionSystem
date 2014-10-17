@@ -8,6 +8,7 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Serializable;
 import java.lang.reflect.Type;
+import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -34,6 +35,7 @@ public class CenterMain implements Runnable {
 	private CenterMain(){
 		Properties defaultSettings = new Properties();
 		defaultSettings.put("audio_url", "localhost");
+		defaultSettings.put("socket_port", 8828);
 		Properties settings = new Properties(defaultSettings);
 		try {
 			settings.load(new FileInputStream("center.properties"));
@@ -42,17 +44,27 @@ public class CenterMain implements Runnable {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-/*		GE = new GlobalEnviroment(settings.getProperty("ftp_url"), settings.getProperty("ftp_usr"),
-				settings.getProperty("ftp_pwd")); */
+		
+		servicePort = Integer.valueOf(settings.getProperty("socket_port"));
 		Map<String, String> map = new HashMap<String, String>();
 		map.put("audio_url", settings.getProperty("audio_url"));
 		centerService.addGlobalEnvi(map);
 	}
-	
+	/**
+	 * 监听socket端口，对于每个连接请求，产生一个ServiceChannel用来进行输入输出的交互。
+	 */
 	@Override
 	public void run() {
 		// TODO Auto-generated method stub
-		
+		try{
+			ServerSocket server = new ServerSocket(servicePort);
+			while(! Thread.currentThread().isInterrupted()) {
+				new JobChannel(server.accept());
+			}
+		}
+		catch(IOException e){
+			e.printStackTrace();
+		}
 	}
 	/**
 	 * 一线流程，作业处理的全部逻辑。通过socket输入输出。
@@ -81,6 +93,8 @@ public class CenterMain implements Runnable {
 		volatile boolean isValidState = true;
 		
 		public JobChannel(Socket s){
+			myLogger.info("constructing JobChannel Object from socket: remote: "+
+		s.getRemoteSocketAddress() +"local: "+s.getLocalSocketAddress());
 			try {
 				in =  new InputStreamReader(s.getInputStream(), "UTF-8");
 				out = new OutputStreamWriter(s.getOutputStream(), "UTF-8");
@@ -352,6 +366,7 @@ public class CenterMain implements Runnable {
 	Logger myLogger = Logger.getLogger("zsr.keyword");
 	//TODO 获取服务对象的方式需要优化。
 	CenterKeywordService centerService = EngineKeywordService.getOnlyInstance();
+	int servicePort;
 	//GlobalEnviroment GE;//
 	/**
 	 * @param args

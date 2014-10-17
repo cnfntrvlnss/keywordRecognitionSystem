@@ -55,7 +55,7 @@ public class FuncUtil {
 	 * 确保不抛出异常，但运行失败。
 	 * @param file
 	 */
-	public static void writeIdxFile(String file, byte[] data) {
+	public static void writeFile(String file, byte[] data) {
 		File f = new File(file);
 		if(data == null || f.exists()) {
 			//log: warning, while the exact file exists, receive a creat-file
@@ -86,7 +86,7 @@ public class FuncUtil {
 	 * @param file
 	 * @return
 	 */
-	public static byte[] readIdxFile(String file) {
+	public static byte[] readFile(String file) {
 		File f = new File(file);
 		if(!f.exists()) {
 			//log: warning, while the exact file doesn't exist, receive

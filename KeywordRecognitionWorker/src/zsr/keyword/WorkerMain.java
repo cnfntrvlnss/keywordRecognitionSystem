@@ -1,7 +1,7 @@
 package zsr.keyword;
 
-import static zsr.keyword.FuncUtil.readIdxFile;
-import static zsr.keyword.FuncUtil.writeIdxFile;
+import static zsr.keyword.FuncUtil.readFile;
+import static zsr.keyword.FuncUtil.writeFile;
 
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;

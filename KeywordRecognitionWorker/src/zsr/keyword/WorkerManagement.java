@@ -124,7 +124,6 @@ public class WorkerManagement implements Runnable{
 	
 	@Override
 	public void run() {
-		// TODO Auto-generated method stub
 		ClientThreadCab cab = new ClientThreadCab();
 		try{
 			ServerSocket server = new ServerSocket(centerPort);
@@ -132,7 +131,7 @@ public class WorkerManagement implements Runnable{
 				try{
 					if(cab.hasRoom()){
 						Socket s = server.accept();
-						myLogger.fine("a new socket: local "+s.getLocalSocketAddress()+"; remote "+s.getRemoteSocketAddress());
+						myLogger.info("a new socket: local "+s.getLocalSocketAddress()+"; remote "+s.getRemoteSocketAddress());
 						Thread t = new Thread(new ClientLogicProcess(s), "client process");
 						t.start();
 						cab.addThread(t);
