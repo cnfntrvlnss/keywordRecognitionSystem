@@ -10,8 +10,10 @@ import java.io.Serializable;
 import java.lang.reflect.Type;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -55,15 +57,27 @@ public class CenterMain implements Runnable {
 	 */
 	@Override
 	public void run() {
-		// TODO Auto-generated method stub
+		//clear rubbish of channels pre-hour.
+		Long clearInstant = new Date().getTime() + 3600*1000L;
 		try{
-			ServerSocket server = new ServerSocket(servicePort);
+			this.server = new ServerSocket(servicePort);
 			while(! Thread.currentThread().isInterrupted()) {
-				new JobChannel(server.accept());
+				channels.add(new JobChannel(server.accept()));
+				if(new Date().getTime() > clearInstant){
+					for(Iterator<JobChannel> it=channels.iterator(); it.hasNext();){
+						if(it.next().isDead()){
+							it.remove();
+						}
+					}
+				}
 			}
 		}
 		catch(IOException e){
 			e.printStackTrace();
+		}
+		//等待
+		for(JobChannel c: channels){
+			c.stop();
 		}
 	}
 	/**
@@ -82,16 +96,6 @@ public class CenterMain implements Runnable {
 	 *
 	 */
 	private class JobChannel implements Runnable{
-		
-		String globNameOnline = "$keywords1"+ Thread.currentThread().getId();
-		String globNameOffline = "$Keywords2"+ Thread.currentThread().getId();
-		
-		String kwTmpStoredOnline = "";
-		String kwTmpStoredOffline = "";
-		private InputStreamReader in;
-		private OutputStreamWriter out;
-		volatile boolean isValidState = true;
-		
 		public JobChannel(Socket s){
 			myLogger.info("constructing JobChannel Object from socket: remote: "+
 		s.getRemoteSocketAddress() +"local: "+s.getLocalSocketAddress());
@@ -226,6 +230,7 @@ public class CenterMain implements Runnable {
 			CenterKeywordService.ServiceChannel sc = centerService.allocateOneChannel();
 			Gson gson = new Gson();
 			try{
+				this.blinker = Thread.currentThread();
 				while(isValidState){
 					// read job of string format.
 					StringBuffer sb = new StringBuffer();
@@ -346,6 +351,7 @@ public class CenterMain implements Runnable {
 			
 			finally{
 				//释放2类资源，[重要]
+				isValidState = false;
 				sc.close();
 				Set<String> tmpSet = new HashSet<String>();
 				tmpSet.add(globNameOnline);
@@ -356,31 +362,62 @@ public class CenterMain implements Runnable {
 					if(out != null) out.close();
 				} catch (IOException e) {
 					e.printStackTrace();
-				}
-				
+				}		
 			}
+			
+		}
+		/**
+		 * 对象销毁前的中断线程的方式。等待线程结束。
+		 */
+		public void stop(){
+				try {
+					if(in!=null) in.close();
+					if(out != null) out.close();
+					
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+				this.isValidState = false;	
+				if(blinker != null) blinker.interrupt();
+				try {
+					blinker.join();
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+		}
+		/**
+		 * 
+		 * @return 线程已经无效，死亡。
+		 */
+		public boolean isDead(){
+			return !isValidState && !blinker.isAlive();
 		}
 		
-	}
-	
+		String globNameOnline = "$keywords1"+ Thread.currentThread().getId();
+		String globNameOffline = "$Keywords2"+ Thread.currentThread().getId();
+		
+		String kwTmpStoredOnline = "";
+		String kwTmpStoredOffline = "";
+		private InputStreamReader in;
+		private OutputStreamWriter out;
+		volatile boolean isValidState = true;
+		private Thread blinker;	
+	}// end class JobChannel.
+
 	Logger myLogger = Logger.getLogger("zsr.keyword");
 	//TODO 获取服务对象的方式需要优化。
 	CenterKeywordService centerService = EngineKeywordService.getOnlyInstance();
 	int servicePort;
+	ServerSocket server;
+	LinkedList<JobChannel>  channels = new LinkedList<JobChannel>();
 	//GlobalEnviroment GE;//
 	/**
 	 * @param args
 	 */
 	public static void main(String[] args) {
-		// TODO Auto-generated method stub
+		//启动CenterMain服务。
 		
-		JobStruct one = new JobStruct();
-		one.addTestData();
-		String json = one.toJson();
-		System.out.println("one = " + one);
-		System.out.println("one's json = " + json);
-		JobStruct two = JobStruct.fromJson(json);
-		System.out.println("two = " + two);
+		
 		
 	}
 
