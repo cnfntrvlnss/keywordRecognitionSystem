@@ -57,6 +57,7 @@ public class CenterMain implements Runnable {
 	 */
 	@Override
 	public void run() {
+		this.blinker = Thread.currentThread();
 		//clear rubbish of channels pre-hour.
 		Long clearInstant = new Date().getTime() + 3600*1000L;
 		try{
@@ -78,6 +79,14 @@ public class CenterMain implements Runnable {
 		//等待
 		for(JobChannel c: channels){
 			c.stop();
+		}
+	}
+	public void stop(){
+		this.blinker.interrupt();
+		try {
+			this.server.close();
+		} catch (IOException e) {
+			e.printStackTrace();
 		}
 	}
 	/**
@@ -393,30 +402,40 @@ public class CenterMain implements Runnable {
 			return !isValidState && !blinker.isAlive();
 		}
 		
-		String globNameOnline = "$keywords1"+ Thread.currentThread().getId();
-		String globNameOffline = "$Keywords2"+ Thread.currentThread().getId();
+		private String globNameOnline = "$keywords1"+ Thread.currentThread().getId();
+		private String globNameOffline = "$Keywords2"+ Thread.currentThread().getId();
 		
-		String kwTmpStoredOnline = "";
-		String kwTmpStoredOffline = "";
+		private String kwTmpStoredOnline = "";
+		private String kwTmpStoredOffline = "";
 		private InputStreamReader in;
 		private OutputStreamWriter out;
-		volatile boolean isValidState = true;
+		private volatile boolean isValidState = true;
 		private Thread blinker;	
 	}// end class JobChannel.
 
-	Logger myLogger = Logger.getLogger("zsr.keyword");
+	private Logger myLogger = Logger.getLogger("zsr.keyword");
 	//TODO 获取服务对象的方式需要优化。
-	CenterKeywordService centerService = EngineKeywordService.getOnlyInstance();
-	int servicePort;
-	ServerSocket server;
-	LinkedList<JobChannel>  channels = new LinkedList<JobChannel>();
+	private CenterKeywordService centerService = EngineKeywordService.getOnlyInstance();
+	private int servicePort;
+	private ServerSocket server;
+	private LinkedList<JobChannel>  channels = new LinkedList<JobChannel>();
+	private Thread blinker;
 	//GlobalEnviroment GE;//
 	/**
 	 * @param args
+	 * @throws InterruptedException 
 	 */
-	public static void main(String[] args) {
+	public static void main(String[] args) throws InterruptedException {
 		//启动CenterMain服务。
-		
+		final CenterMain ct = new CenterMain();
+		Thread thrd = new Thread(ct);
+		//相应^C，结束程序。
+		Runtime.getRuntime().addShutdownHook(new Thread(){
+			public void run(){
+				ct.stop();
+			}
+		});
+		thrd.join();
 		
 		
 	}
